@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>シフト作るくん - 月行事入力</title>
+    <!-- プレミアムなデザインのためのフォント読み込み -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700;900&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- ヘッダー -->
+        <header class="glass-header">
+            <div class="header-content">
+                <div class="header-titles">
+                    <h1>シフト作るくん</h1>
+                    <span class="subtitle">月行事・必要人数入力</span>
+                </div>
+            </div>
+
+            <nav class="top-nav">
+                <a href="top.html" class="nav-btn">トップ</a>
+                <a href="index.html" class="nav-btn active">月行事</a>
+                <a href="staff.html" class="nav-btn">スタッフ</a>
+                <a href="request.html" class="nav-btn">休み希望</a>
+                <a href="generate.html" class="nav-btn">シフト表</a>
+            </nav>
+        </header>
+
+        <!-- メインコンテンツ -->
+        <main class="main-content">
+            <!-- 月選択コントロール -->
+            <div class="month-control glass-panel">
+                <button id="prev-month" class="icon-btn" aria-label="前の月">
+                    <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="15 18 9 12 15 6"></polyline>
+                    </svg>
+                </button>
+                <div class="month-display">
+                    <h2 id="current-month-display">--年 --月度</h2>
+                    <p id="period-display" class="period-text">--月--日 〜 --月--日</p>
+                </div>
+                <button id="next-month" class="icon-btn" aria-label="次の月">
+                    <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="9 18 15 12 9 6"></polyline>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- カレンダーコンテナ -->
+            <div class="calendar-container glass-panel">
+                <div class="calendar-header">
+                    <div class="day-name sunday">日</div>
+                    <div class="day-name">月</div>
+                    <div class="day-name">火</div>
+                    <div class="day-name">水</div>
+                    <div class="day-name">木</div>
+                    <div class="day-name">金</div>
+                    <div class="day-name saturday">土</div>
+                </div>
+                <div class="calendar-grid" id="calendar-grid">
+                    <!-- JavaScriptでカレンダーが生成されます -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- 入力モーダル -->
+    <div id="edit-modal" class="modal-overlay hidden">
+        <div class="modal-content glass-panel">
+            <div class="modal-header">
+                <h3 id="modal-date-display">日付</h3>
+                <button id="close-modal" class="close-btn" aria-label="閉じる">
+                    <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+
+            <div class="modal-body">
+                <!-- クイック入力ボタン -->
+                <div class="quick-presets">
+                    <p class="preset-label">クイック入力：</p>
+                    <div class="preset-buttons">
+                        <button class="preset-btn" data-event="通常日">通常日</button>
+                        <button class="preset-btn" data-event="行事日">行事日</button>
+                        <button class="preset-btn" data-event="休日">休日</button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="event-name">行事名</label>
+                    <input type="text" id="event-name" class="premium-input" placeholder="例: ひな祭り、通常日"
+                        list="event-suggestions" maxlength="20">
+                    <datalist id="event-suggestions">
+                        <option value="通常日">
+                        <option value="行事日">
+                        <option value="研修">
+                        <option value="会議">
+                    </datalist>
+                </div>
+
+                <div class="form-group">
+                    <label style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0;">
+                        <input type="checkbox" id="is-busy-day" style="width:18px; height:18px;">
+                        人数多め
+                    </label>
+                </div>
+
+            </div>
+
+            <div class="modal-footer">
+                <button id="clear-day-btn" class="danger-btn">クリア</button>
+                <button id="save-day-btn" class="primary-btn">
+                    <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none"
+                        stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
+                        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                        <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                        <polyline points="7 3 7 8 15 8"></polyline>
+                    </svg>
+                    保存
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- トースト通知 -->
+    <div id="toast" class="toast hidden">
+        <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+        </svg>
+        <span id="toast-message">保存しました</span>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>

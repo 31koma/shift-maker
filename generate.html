@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>シフト作るくん - シフト生成</title>
+    <!-- プレミアムなデザインのためのフォント読み込み -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700;900&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- ヘッダー -->
+        <header class="glass-header">
+            <div class="header-content">
+                <div class="header-titles">
+                    <h1>シフト作るくん</h1>
+                    <span class="subtitle">シフト自動生成</span>
+                </div>
+            </div>
+
+            <nav class="top-nav">
+                <a href="top.html" class="nav-btn">トップ</a>
+                <a href="index.html" class="nav-btn">月行事</a>
+                <a href="staff.html" class="nav-btn">スタッフ</a>
+                <a href="request.html" class="nav-btn">休み希望</a>
+                <a href="generate.html" class="nav-btn active">シフト表</a>
+            </nav>
+        </header>
+
+        <!-- メインコンテンツ -->
+        <main class="main-content">
+            <!-- 月選択コントロール -->
+            <div class="month-control glass-panel hide-on-print">
+                <button id="prev-month" class="icon-btn" aria-label="前の月">
+                    <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="15 18 9 12 15 6"></polyline>
+                    </svg>
+                </button>
+                <div class="month-display">
+                    <h2 id="current-month-display">--年 --月度</h2>
+                    <p id="period-display" class="period-text">--月--日 〜 --月--日</p>
+                </div>
+                <button id="next-month" class="icon-btn" aria-label="次の月">
+                    <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="9 18 15 12 9 6"></polyline>
+                    </svg>
+                </button>
+            </div>
+
+            <div class="glass-panel hide-on-print"
+                style="padding: 1.5rem; margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                <p>ルールに基づき自動でシフトを生成します。</p>
+                <div style="display: flex; gap: 1rem;">
+                    <button id="generate-btn" class="primary-btn">自動生成する</button>
+                    <button id="saveBtn" type="button" class="secondary-btn">結果を保存</button>
+                    <button id="openSavedResultsBtn" type="button" class="secondary-btn">保存結果を開く</button>
+                    <button id="pdf-btn" class="secondary-btn">PDF出力 (印刷)</button>
+                    <button id="time-settings-btn" class="secondary-btn">時間設定</button>
+                    <button id="rule-settings-btn" class="secondary-btn">ルール設定</button>
+                </div>
+            </div>
+            <!-- 保存結果モーダル -->
+            <div id="saved-results-modal" class="modal-overlay hidden">
+                <div class="modal-content glass-panel" style="max-width: 640px;">
+                    <div class="modal-header">
+                        <h3>保存したシフト結果</h3>
+                        <button id="close-saved-results" class="close-btn" aria-label="閉じる">
+                            <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2"
+                                fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="modal-body" style="max-height:55vh; overflow-y:auto;">
+                        <div id="saved-results-list" style="display:flex; flex-direction:column; gap:0.5rem;"></div>
+                    </div>
+                    <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:0.5rem;">
+                        <button id="close-saved-results-footer" class="secondary-btn">閉じる</button>
+                    </div>
+                </div>
+            </div>
+            <!-- ルール設定モーダル -->
+            <div id="rule-settings-modal" class="modal-overlay hidden">
+                <div class="modal-content glass-panel" style="max-width: 560px;">
+                    <div class="modal-header">
+                        <h3>自動生成ルール設定</h3>
+                        <button id="close-rule-settings" class="close-btn" aria-label="閉じる">
+                            <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2"
+                                fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="modal-body" style="display:flex; flex-direction:column; gap:0.75rem; max-height:55vh; overflow-y:auto;">
+                        <div class="time-setting">
+                            <label for="rule-1-count">①の基本人数</label>
+                            <input id="rule-1-count" type="number" class="premium-input" min="0" max="20" value="1">
+                        </div>
+                        <div class="time-setting">
+                            <label for="rule-10-count">⑩の基本人数</label>
+                            <input id="rule-10-count" type="number" class="premium-input" min="0" max="20" value="3">
+                        </div>
+                        <div class="time-setting">
+                            <label><input id="rule-1-fulltime-only" type="checkbox" checked> ①は正社員のみ</label>
+                        </div>
+                        <div class="time-setting">
+                            <label><input id="rule-1-no-after-10" type="checkbox" checked> ①は前日⑩の人を除外</label>
+                        </div>
+                        <div class="time-setting">
+                            <label><input id="rule-require-ft-on-10" type="checkbox" checked> ⑩に正社員を最低1人含める</label>
+                        </div>
+                        <div class="time-setting">
+                            <label>⑩の正社員人数確率（%）</label>
+                            <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:0.5rem;">
+                                <div>
+                                    <div style="font-size:0.75rem; color:var(--text-muted);">1人</div>
+                                    <input id="rule-10-ft-p1" type="number" class="premium-input" min="0" max="100" value="40">
+                                </div>
+                                <div>
+                                    <div style="font-size:0.75rem; color:var(--text-muted);">2人</div>
+                                    <input id="rule-10-ft-p2" type="number" class="premium-input" min="0" max="100" value="40">
+                                </div>
+                                <div>
+                                    <div style="font-size:0.75rem; color:var(--text-muted);">3人</div>
+                                    <input id="rule-10-ft-p3" type="number" class="premium-input" min="0" max="100" value="20">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="time-setting">
+                            <label><input id="rule-fill-off-k" type="checkbox"> 未割当は公休(公)で埋める（OFFで空欄）</label>
+                        </div>
+                        <div class="time-setting" style="display:block;">
+                            <label style="display:block; margin-bottom:0.4rem;">現在の自動生成ロジックまとめ</label>
+                            <div id="rule-logic-summary"
+                                style="background:rgba(15,23,42,0.04); border:1px solid rgba(15,23,42,0.08); border-radius:10px; padding:0.7rem 0.8rem; font-size:0.85rem; line-height:1.55; color:var(--text-main);">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:1rem;">
+                        <button id="cancel-rule-settings" class="secondary-btn">キャンセル</button>
+                        <button id="save-rule-settings" class="primary-btn">保存</button>
+                    </div>
+                </div>
+            </div>
+            <!-- 時間設定モーダル -->
+            <div id="time-settings-modal" class="modal-overlay hidden">
+                <div class="modal-content glass-panel" style="max-width: 400px;">
+                    <div class="modal-header">
+                        <h3>シフト時間設定</h3>
+                        <button id="close-time-settings" class="close-btn" aria-label="閉じる">
+                            <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2"
+                                fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="modal-body"
+                        style="display: flex; flex-direction: column; gap: 1rem; max-height: 55vh; overflow-y: auto;">
+                        <div class="time-setting" data-type="1">
+                            <label><input type="checkbox" class="shift-enabled" data-type="1" checked> ① (1)</label>
+                            <input type="time" class="shift-start" data-type="1" value="06:00">
+                            <span>〜</span>
+                            <input type="time" class="shift-end" data-type="1" value="14:30">
+                        </div>
+                        <div class="time-setting" data-type="2">
+                            <label><input type="checkbox" class="shift-enabled" data-type="2" checked> ② (2)</label>
+                            <input type="time" class="shift-start" data-type="2">
+                            <span>〜</span>
+                            <input type="time" class="shift-end" data-type="2">
+                        </div>
+                        <div class="time-setting" data-type="3">
+                            <label><input type="checkbox" class="shift-enabled" data-type="3" checked> ③ (3)</label>
+                            <input type="time" class="shift-start" data-type="3">
+                            <span>〜</span>
+                            <input type="time" class="shift-end" data-type="3">
+                        </div>
+                        <div class="time-setting" data-type="4">
+                            <label><input type="checkbox" class="shift-enabled" data-type="4" checked> ④ (4)</label>
+                            <input type="time" class="shift-start" data-type="4">
+                            <span>〜</span>
+                            <input type="time" class="shift-end" data-type="4">
+                        </div>
+                        <div class="time-setting" data-type="5">
+                            <label><input type="checkbox" class="shift-enabled" data-type="5" checked> ⑤ (5)</label>
+                            <input type="time" class="shift-start" data-type="5">
+                            <span>〜</span>
+                            <input type="time" class="shift-end" data-type="5">
+                        </div>
+                        <div class="time-setting" data-type="6">
+                            <label><input type="checkbox" class="shift-enabled" data-type="6" checked> ⑥ (6)</label>
+                            <input type="time" class="shift-start" data-type="6" value="08:30">
+                            <span>〜</span>
+                            <input type="time" class="shift-end" data-type="6" value="17:00">
+                        </div>
+                        <div class="time-setting" data-type="7">
+                            <label><input type="checkbox" class="shift-enabled" data-type="7" checked> ⑦ (7)</label>
+                            <input type="time" class="shift-start" data-type="7">
+                            <span>〜</span>
+                            <input type="time" class="shift-end" data-type="7">
+                        </div>
+                        <div class="time-setting" data-type="8">
+                            <label><input type="checkbox" class="shift-enabled" data-type="8" checked> ⑧ (8)</label>
+                            <input type="time" class="shift-start" data-type="8">
+                            <span>〜</span>
+                            <input type="time" class="shift-end" data-type="8">
+                        </div>
+                        <div class="time-setting" data-type="9">
+                            <label><input type="checkbox" class="shift-enabled" data-type="9" checked> ⑨ (9)</label>
+                            <input type="time" class="shift-start" data-type="9">
+                            <span>〜</span>
+                            <input type="time" class="shift-end" data-type="9">
+                        </div>
+                        <div class="time-setting" data-type="10">
+                            <label><input type="checkbox" class="shift-enabled" data-type="10" checked> ⑩ (10)</label>
+                            <input type="time" class="shift-start" data-type="10" value="10:30">
+                            <span>〜</span>
+                            <input type="time" class="shift-end" data-type="10" value="19:00">
+                        </div>
+                    </div>
+                    <div class="modal-footer"
+                        style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem;">
+                        <button id="cancel-time-settings" class="secondary-btn">キャンセル</button>
+                        <button id="save-time-settings" class="primary-btn">保存</button>
+                    </div>
+                </div>
+            </div>
+            <div class="glass-panel" id="shift-time-summary"
+                style="padding: 0.85rem 1.2rem; margin-bottom: 1rem; font-size: 0.9rem; color: var(--text-main);">
+                時間設定: -
+            </div>
+
+            <div class="request-table-wrapper glass-panel" id="shift-container" style="display: none;">
+                <div id="screen-shift-title" class="shift-title hide-on-print">出勤表</div>
+                <div id="print-header" class="print-only" style="text-align: center; margin-bottom: 1rem;">
+                    <h2 id="print-title">出勤表</h2>
+                    <p id="print-time-summary" style="margin-top: 0.35rem; font-size: 0.9rem;">時間設定: -</p>
+                </div>
+                <table class="request-table shift-table" id="shift-table">
+                    <!-- JSで生成 -->
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <!-- トースト通知 -->
+    <div id="toast" class="toast hidden">
+        <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+        </svg>
+        <span id="toast-message">生成しました</span>
+    </div>
+
+    <script src="generate.js"></script>
+</body>
+
+</html>

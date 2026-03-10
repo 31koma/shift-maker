@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>シフト作るくん - スタッフ選択</title>
+    <!-- プレミアムなデザインのためのフォント読み込み -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700;900&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- ヘッダー -->
+        <header class="glass-header">
+            <div class="header-content">
+                <div class="header-titles">
+                    <h1>シフト作るくん</h1>
+                    <span class="subtitle">スタッフ選択</span>
+                </div>
+            </div>
+
+            <nav class="top-nav">
+                <a href="top.html" class="nav-btn">トップ</a>
+                <a href="index.html" class="nav-btn">月行事</a>
+                <a href="staff.html" class="nav-btn active">スタッフ</a>
+                <a href="request.html" class="nav-btn">休み希望</a>
+                <a href="generate.html" class="nav-btn">シフト表</a>
+            </nav>
+        </header>
+
+        <!-- メインコンテンツ -->
+        <main class="main-content">
+            <div class="glass-panel" style="padding: 1.5rem; margin-bottom: 1.5rem;">
+                <h2 style="font-size: 1.125rem; margin-bottom: 1rem; color: var(--primary-color);">スタッフの追加・編集</h2>
+                <form id="add-staff-form" style="display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center;">
+                    <input type="text" id="new-staff-name" class="premium-input" placeholder="追加するお名前"
+                        style="max-width: 200px;" required>
+                    <select id="new-staff-type" class="premium-input" style="max-width: 150px; cursor: pointer;">
+                        <option value="fulltime">正社員</option>
+                        <option value="parttime">パート</option>
+                        <option value="irregular">イレギュラー</option>
+                    </select>
+                    <button type="submit" class="primary-btn">追加</button>
+
+                    <div style="flex-grow: 1; min-width: 20px;"></div>
+
+                    <button type="button" id="check-all" class="secondary-btn">すべて選択</button>
+                    <button type="button" id="uncheck-all" class="secondary-btn">すべて解除</button>
+                </form>
+            </div>
+
+            <div class="staff-lists">
+                <div class="staff-section glass-panel">
+                    <h2>正社員</h2>
+                    <div class="staff-grid" id="fulltime-list">
+                        <!-- JSで生成 -->
+                    </div>
+                </div>
+
+                <div class="staff-section glass-panel">
+                    <h2>パート</h2>
+                    <div class="staff-grid" id="parttime-list">
+                        <!-- JSで生成 -->
+                    </div>
+                </div>
+
+                <div class="staff-section glass-panel" style="background: #fff8f1;">
+                    <h2>イレギュラー</h2>
+                    <div class="staff-grid" id="irregular-list">
+                        <!-- JSで生成 -->
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- トースト通知 -->
+    <div id="toast" class="toast hidden">
+        <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+        </svg>
+        <span id="toast-message">保存しました</span>
+    </div>
+
+    <script src="staff.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>シフト作るくん - トップ</title>
+    <link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@600;700&family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body class="top-page-body">
+    <div class="app-container top-page-shell">
+        <header class="glass-header top-hero-header">
+            <div class="header-content">
+                <div class="header-titles">
+                    <h1>シフト作るくん</h1>
+                    <span class="subtitle">トップ</span>
+                </div>
+            </div>
+            <nav class="top-nav">
+                <a href="top.html" class="nav-btn active">トップ</a>
+                <a href="index.html" class="nav-btn">月行事</a>
+                <a href="staff.html" class="nav-btn">スタッフ</a>
+                <a href="request.html" class="nav-btn">休み希望</a>
+                <a href="generate.html" class="nav-btn">シフト表</a>
+            </nav>
+        </header>
+
+        <main class="main-content top-main">
+            <section class="top-hero glass-panel">
+                <p class="top-kicker">SHIFT CONTROL DASHBOARD</p>
+                <h2>今月の勤務表を、最短ルートで作る</h2>
+                <p class="top-lead">設定 → 休み希望 → 自動生成 → 手直しまで、この画面からすぐ入れます。</p>
+                <div class="top-cta-row">
+                    <a class="top-cta primary" href="generate.html">自動生成を開始</a>
+                    <a class="top-cta secondary" href="index.html">月行事を編集</a>
+                </div>
+                <div class="top-hero-rings" aria-hidden="true"></div>
+            </section>
+
+            <section class="top-grid">
+                <a class="top-card top-card-events" href="index.html">
+                    <div class="top-card-head">
+                        <span class="top-card-tag">01</span>
+                        <h3>月行事</h3>
+                    </div>
+                    <p>行事日チェックと行事名入力。前日判定にも反映。</p>
+                </a>
+
+                <a class="top-card top-card-staff" href="staff.html">
+                    <div class="top-card-head">
+                        <span class="top-card-tag">02</span>
+                        <h3>スタッフ</h3>
+                    </div>
+                    <p>対象スタッフ、公休回数、イレギュラー設定を管理。</p>
+                </a>
+
+                <a class="top-card top-card-request" href="request.html">
+                    <div class="top-card-head">
+                        <span class="top-card-tag">03</span>
+                        <h3>休み希望</h3>
+                    </div>
+                    <p>有休/希望勤務を入力し、生成時の前提にする。</p>
+                </a>
+
+                <a class="top-card top-card-generate" href="generate.html">
+                    <div class="top-card-head">
+                        <span class="top-card-tag">04</span>
+                        <h3>シフト表</h3>
+                    </div>
+                    <p>複数回ガチャ生成、手編集、印刷出力まで対応。</p>
+                </a>
+            </section>
+
+            <section class="top-status glass-panel">
+                <h3>現在の入力状況</h3>
+                <div class="top-status-grid">
+                    <div class="top-status-item">
+                        <div class="label">対象月度</div>
+                        <div id="top-period" class="value">-</div>
+                    </div>
+                    <div class="top-status-item">
+                        <div class="label">選択スタッフ</div>
+                        <div id="top-staff-count" class="value">-</div>
+                    </div>
+                    <div class="top-status-item">
+                        <div class="label">行事日チェック数</div>
+                        <div id="top-event-count" class="value">-</div>
+                    </div>
+                    <div class="top-status-item">
+                        <div class="label">有休入力数</div>
+                        <div id="top-leave-count" class="value">-</div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+    <script src="top.js"></script>
+</body>
+
+</html>
