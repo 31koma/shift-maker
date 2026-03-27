@@ -31,7 +31,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let leaveCount = 0;
     Object.values(requestData).forEach(byName => {
         Object.values(byName || {}).forEach(v => {
-            if (v === '有' || v === '有休' || v === '休') leaveCount += 1;
+            if (v === '有' || v === '有休' || v === '特' || v === '特休' || v === '休') leaveCount += 1;
         });
     });
     leaveCountEl.textContent = `${leaveCount}件`;

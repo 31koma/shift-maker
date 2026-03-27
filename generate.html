@@ -10,7 +10,7 @@
         href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700;900&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="style.css">
-    <script src="auth.js"></script>
+    <script src="auth.js?v=20260327a"></script>
 </head>
 
 <body>
@@ -26,7 +26,7 @@
 
             <nav class="top-nav">
                 <a href="top.html" class="nav-btn">トップ</a>
-                <a href="index.html" class="nav-btn">月行事</a>
+                <a href="calendar.html" class="nav-btn">月行事</a>
                 <a href="staff.html" class="nav-btn">スタッフ</a>
                 <a href="request.html" class="nav-btn">休み希望</a>
                 <a href="generate.html" class="nav-btn active">シフト表</a>
@@ -104,17 +104,20 @@
                     <div class="modal-body" style="display:flex; flex-direction:column; gap:0.75rem; max-height:55vh; overflow-y:auto;">
                         <div class="time-setting">
                             <label for="rule-1-count">①の基本人数</label>
-                            <input id="rule-1-count" type="number" class="premium-input" min="0" max="20" value="1">
+                            <input id="rule-1-count" type="number" class="premium-input" min="1" max="20" value="1">
                         </div>
                         <div class="time-setting">
                             <label for="rule-10-count">⑩の基本人数</label>
                             <input id="rule-10-count" type="number" class="premium-input" min="0" max="20" value="3">
                         </div>
                         <div class="time-setting">
-                            <label><input id="rule-1-fulltime-only" type="checkbox" checked> ①は正社員のみ</label>
+                            <label><input id="rule-1-fulltime-only" type="checkbox" checked> ①に正社員を最低1人含める</label>
                         </div>
                         <div class="time-setting">
                             <label><input id="rule-1-no-after-10" type="checkbox" checked> ①は前日⑩の人を除外</label>
+                        </div>
+                        <div class="time-setting">
+                            <div style="font-size:0.85rem; color:var(--text-muted);">①の翌日は自動で休みになります</div>
                         </div>
                         <div class="time-setting">
                             <label><input id="rule-require-ft-on-10" type="checkbox" checked> ⑩に正社員を最低1人含める</label>
@@ -137,7 +140,10 @@
                             </div>
                         </div>
                         <div class="time-setting">
-                            <label><input id="rule-fill-off-k" type="checkbox"> 未割当は公休(公)で埋める（OFFで空欄）</label>
+                            <label><input id="rule-fill-off-k" type="checkbox"> 未割当は⑥で埋める（OFFで空欄）</label>
+                        </div>
+                        <div class="time-setting">
+                            <div style="font-size:0.85rem; color:var(--text-muted);">公休は3連休を避ける方向で自動補正します</div>
                         </div>
                         <div class="time-setting" style="display:block;">
                             <label style="display:block; margin-bottom:0.4rem;">現在の自動生成ロジックまとめ</label>
@@ -263,7 +269,7 @@
         <span id="toast-message">生成しました</span>
     </div>
 
-    <script src="generate.js"></script>
+    <script src="generate.js?v=20260327a"></script>
 </body>
 
 </html>

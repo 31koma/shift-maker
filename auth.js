@@ -1,5 +1,7 @@
 (function () {
     const AUTH_KEY = 'shiftApp_auth_ok';
+    const LOCAL_TEST_PASSWORD = '33';
+    const LOCAL_HOSTNAMES = new Set(['', 'localhost', '127.0.0.1', '::1']);
 
     document.documentElement.classList.add('auth-checking');
 
@@ -13,6 +15,17 @@
         document.documentElement.classList.remove('auth-locked');
         const overlay = document.getElementById('auth-overlay');
         if (overlay) overlay.remove();
+    }
+
+    function isLocalEnvironment() {
+        const { protocol, hostname } = window.location;
+        if (protocol === 'file:') return true;
+        if (LOCAL_HOSTNAMES.has(hostname)) return true;
+        if (/^192\.168\./.test(hostname)) return true;
+        if (/^10\./.test(hostname)) return true;
+        if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname)) return true;
+        if (hostname.endsWith('.local')) return true;
+        return false;
     }
 
     if (isAuthed()) {
@@ -131,12 +144,23 @@ html.auth-locked .app-container {
             e.preventDefault();
             errorEl.textContent = '';
             submitBtn.disabled = true;
+            const trimmedPassword = passInput.value.trim();
+
+            if (isLocalEnvironment()) {
+                if (trimmedPassword === LOCAL_TEST_PASSWORD) {
+                    unlockApp();
+                } else {
+                    errorEl.textContent = 'パスワードが違います。';
+                }
+                submitBtn.disabled = false;
+                return;
+            }
 
             try {
                 const res = await fetch('/api/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ password: passInput.value })
+                    body: JSON.stringify({ password: trimmedPassword })
                 });
 
                 const data = await res.json().catch(() => ({}));
@@ -145,7 +169,12 @@ html.auth-locked .app-container {
                     return;
                 }
 
-                errorEl.textContent = 'パスワードが違います。';
+                if (res.status === 404 && trimmedPassword === LOCAL_TEST_PASSWORD) {
+                    unlockApp();
+                    return;
+                }
+
+                errorEl.textContent = data && data.message ? data.message : 'パスワードが違います。';
             } catch (err) {
                 errorEl.textContent = '通信エラーが発生しました。';
             } finally {

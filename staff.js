@@ -2,29 +2,29 @@ document.addEventListener('DOMContentLoaded', () => {
     const MAX_PUBLIC_HOLIDAYS = 8;
     const defaultStaff = {
         fulltime: [
-            { name: "梶本", checked: true, pubHolidays: 8 },
-            { name: "田渕", checked: true, pubHolidays: 8 },
-            { name: "北窪", checked: true, pubHolidays: 7 },
-            { name: "八田", checked: true, pubHolidays: 8 },
-            { name: "石川", checked: true, pubHolidays: 8 },
-            { name: "岩田泰", checked: true, pubHolidays: 8 },
-            { name: "岩田美", checked: true, pubHolidays: 8 },
-            { name: "岸本", checked: true, pubHolidays: 8 },
-            { name: "中川", checked: true, pubHolidays: 8 },
-            { name: "清水", checked: true, pubHolidays: 8 },
-            { name: "柿林", checked: true, pubHolidays: 8 }
+            { name: "梶本", checked: true, pubHolidays: 8, canWorkOneShift: true },
+            { name: "田渕", checked: true, pubHolidays: 8, canWorkOneShift: true },
+            { name: "北窪", checked: true, pubHolidays: 7, canWorkOneShift: true },
+            { name: "八田", checked: true, pubHolidays: 8, canWorkOneShift: true },
+            { name: "石川", checked: true, pubHolidays: 8, canWorkOneShift: true },
+            { name: "岩田泰", checked: true, pubHolidays: 8, canWorkOneShift: true },
+            { name: "岩田美", checked: true, pubHolidays: 8, canWorkOneShift: true },
+            { name: "岸本", checked: true, pubHolidays: 8, canWorkOneShift: true },
+            { name: "中川", checked: true, pubHolidays: 8, canWorkOneShift: true },
+            { name: "清水", checked: true, pubHolidays: 8, canWorkOneShift: true },
+            { name: "柿林", checked: true, pubHolidays: 8, canWorkOneShift: true }
         ],
         parttime: [
-            { name: "竹田", checked: true, pubHolidays: 8 },
-            { name: "岡本春", checked: true, pubHolidays: 8 },
-            { name: "岡本梨", checked: true, pubHolidays: 8 },
-            { name: "岡崎", checked: true, pubHolidays: 8 },
-            { name: "澤田", checked: true, pubHolidays: 8 },
-            { name: "大野", checked: true, pubHolidays: 8 }
+            { name: "竹田", checked: true, pubHolidays: 8, canWorkOneShift: false },
+            { name: "岡本春", checked: true, pubHolidays: 8, canWorkOneShift: false },
+            { name: "岡本梨", checked: true, pubHolidays: 8, canWorkOneShift: false },
+            { name: "岡崎", checked: true, pubHolidays: 8, canWorkOneShift: false },
+            { name: "澤田", checked: true, pubHolidays: 8, canWorkOneShift: false },
+            { name: "大野", checked: true, pubHolidays: 8, canWorkOneShift: false }
         ],
         irregular: [
-            { name: "太田", checked: true, pubHolidays: 8 },
-            { name: "中西", checked: true, pubHolidays: 8 }
+            { name: "太田", checked: true, pubHolidays: 8, canWorkOneShift: false },
+            { name: "中西", checked: true, pubHolidays: 8, canWorkOneShift: false }
         ]
     };
 
@@ -74,6 +74,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 s.pubHolidays = normalized;
             }
         });
+        all.forEach(s => {
+            if (s.canWorkOneShift === undefined) {
+                s.canWorkOneShift = staffData.fulltime.includes(s);
+                normalizedChanged = true;
+            }
+        });
         if (migrated || normalizedChanged) {
             localStorage.setItem('shiftApp_staffData', JSON.stringify(staffData));
         }
@@ -116,12 +122,19 @@ document.addEventListener('DOMContentLoaded', () => {
             span.className = 'staff-name';
             span.textContent = staff.name;
 
-            const optionsDiv = document.createElement('div');
-            optionsDiv.className = 'staff-options';
+            const settingsRow = document.createElement('div');
+            settingsRow.className = 'staff-settings-row';
 
-            const phLabel = document.createElement('span');
-            phLabel.className = 'staff-options-label';
-            phLabel.textContent = '公休:';
+            const publicCol = document.createElement('div');
+            publicCol.className = 'staff-setting-block';
+
+            const publicValue = document.createElement('label');
+            publicValue.className = 'staff-public-value';
+            publicValue.setAttribute('aria-label', '公休');
+
+            const publicLabel = document.createElement('span');
+            publicLabel.className = 'staff-setting-title';
+            publicLabel.textContent = '公休';
 
             const phInput = document.createElement('input');
             phInput.type = 'number';
@@ -139,8 +152,35 @@ document.addEventListener('DOMContentLoaded', () => {
                 saveData();
             });
 
-            optionsDiv.appendChild(phLabel);
-            optionsDiv.appendChild(phInput);
+            publicValue.appendChild(publicLabel);
+            publicValue.appendChild(phInput);
+            publicCol.appendChild(publicValue);
+
+            const oneCol = document.createElement('div');
+            oneCol.className = 'staff-setting-block';
+            const oneTitle = document.createElement('span');
+            oneTitle.className = 'staff-setting-title';
+            oneTitle.textContent = '①に参加';
+            oneCol.appendChild(oneTitle);
+
+            const oneShiftLabel = document.createElement('label');
+            oneShiftLabel.className = 'staff-inline-check';
+
+            const oneShiftInput = document.createElement('input');
+            oneShiftInput.type = 'checkbox';
+            oneShiftInput.checked = !!staff.canWorkOneShift;
+            oneShiftInput.addEventListener('change', (e) => {
+                staff.canWorkOneShift = e.target.checked;
+                saveData();
+            });
+
+            const oneShiftText = document.createElement('span');
+            oneShiftText.textContent = '参加する';
+
+            oneShiftLabel.appendChild(oneShiftInput);
+            oneShiftLabel.appendChild(oneShiftText);
+            oneCol.appendChild(oneShiftLabel);
+            settingsRow.appendChild(oneCol);
 
             const delBtn = document.createElement('button');
             delBtn.type = 'button';
@@ -159,9 +199,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
             label.appendChild(checkbox);
             label.appendChild(span);
+            settingsRow.appendChild(publicCol);
 
             wrapper.appendChild(label);
-            wrapper.appendChild(optionsDiv);
+            wrapper.appendChild(settingsRow);
             wrapper.appendChild(delBtn);
             container.appendChild(wrapper);
         });
@@ -219,7 +260,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            staffData[type].push({ name: name, checked: true, pubHolidays: MAX_PUBLIC_HOLIDAYS });
+            staffData[type].push({
+                name,
+                checked: true,
+                pubHolidays: MAX_PUBLIC_HOLIDAYS,
+                canWorkOneShift: type === 'fulltime'
+            });
 
             nameInput.value = '';
             renderStaff();

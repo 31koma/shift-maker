@@ -97,7 +97,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const cellVal = (requestData[dateStr] && requestData[dateStr][staffName]) || '';
                     let extraClass = '';
                     if (cellVal === '休') extraClass = 'active-rest';
-                    if (cellVal === '有' || cellVal === '有休') extraClass = 'active-paid-leave';
+                    if (cellVal === '有' || cellVal === '有休' || cellVal === '特' || cellVal === '特休') extraClass = 'active-paid-leave';
                     if (cellVal === '10') extraClass = 'active-10';
 
                     tbody += `<td class="cell ${extraClass}" data-date="${dateStr}" data-name="${staffName}">${cellVal}</td>`;
@@ -125,10 +125,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         let currentVal = requestData[dateStr][staffName] || '';
-        // Toggle: "" -> "休" -> "有" -> "10" -> ""
+        // Toggle: "" -> "休" -> "有" -> "特" -> "10" -> ""
         if (currentVal === '') currentVal = '休';
         else if (currentVal === '休') currentVal = '有';
-        else if (currentVal === '有' || currentVal === '有休') currentVal = '10';
+        else if (currentVal === '有' || currentVal === '有休') currentVal = '特';
+        else if (currentVal === '特' || currentVal === '特休') currentVal = '10';
         else currentVal = '';
 
         if (currentVal === '') {
@@ -147,7 +148,7 @@ document.addEventListener('DOMContentLoaded', () => {
         td.textContent = currentVal;
         td.className = 'cell'; // reset
         if (currentVal === '休') td.classList.add('active-rest');
-        if (currentVal === '有' || currentVal === '有休') td.classList.add('active-paid-leave');
+        if (currentVal === '有' || currentVal === '有休' || currentVal === '特' || currentVal === '特休') td.classList.add('active-paid-leave');
         if (currentVal === '10') td.classList.add('active-10');
     }
 

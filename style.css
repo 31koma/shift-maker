@@ -13,6 +13,7 @@
     --danger-hover: #dc2626;
 
     --color-sunday: #ef4444;
+    --color-holiday: #f59e0b;
     --color-saturday: #3b82f6;
     --color-today-bg: #e0e7ff;
     --color-today-border: #6366f1;
@@ -213,6 +214,10 @@ body {
 
 .calendar-cell.saturday .date-num {
     color: var(--color-saturday);
+}
+
+.calendar-cell.holiday .date-num {
+    color: var(--color-holiday);
 }
 
 /* Badges */
@@ -819,15 +824,14 @@ body {
 /* Custom Checkbox Item */
 .staff-item {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    align-items: center;
-    gap: 0.75rem;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 0.85rem;
     background: #fff;
     padding: 0.75rem 1rem;
     border-radius: 0.5rem;
     border: 1px solid var(--border-color);
     transition: all 0.2s;
-    overflow: hidden;
 }
 
 .staff-item:hover {
@@ -850,10 +854,18 @@ body {
 
 .staff-main-label {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 0.75rem;
     min-width: 0;
     cursor: pointer;
+}
+
+.staff-settings-row {
+    grid-column: 1 / 2;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(120px, 160px));
+    gap: 0.75rem;
+    margin-left: 2rem;
 }
 
 .staff-name {
@@ -861,27 +873,62 @@ body {
     font-size: 1rem;
     color: var(--text-main);
     user-select: none;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    line-height: 1.4;
+    flex: 1 1 auto;
 }
 
-.staff-options {
+.staff-setting-block {
     display: flex;
-    align-items: center;
-    gap: 0.25rem;
-    font-size: 0.75rem;
-    flex-shrink: 0;
+    flex-direction: column;
+    gap: 0.35rem;
+    min-width: 0;
 }
 
-.staff-options-label {
+.staff-public-value {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.35rem;
+}
+
+.staff-setting-title {
+    font-size: 0.76rem;
+    font-weight: 700;
     color: var(--text-muted);
 }
 
+.staff-inline-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    color: var(--text-main);
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+
+.staff-inline-check input {
+    accent-color: var(--primary-color);
+}
+
+.staff-one-placeholder {
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    min-height: 1.5rem;
+    display: inline-flex;
+    align-items: center;
+}
+
 .staff-ph-input {
-    width: 54px;
+    width: 64px;
     padding: 0.1rem 0.25rem;
     font-size: 0.75rem;
+    text-align: center;
 }
 
 .del-staff-btn {
@@ -900,6 +947,24 @@ body {
 
 .del-staff-btn:hover {
     color: var(--danger-color);
+}
+
+@media (max-width: 900px) {
+    .staff-item {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 0.6rem;
+    }
+
+    .staff-settings-row {
+        grid-template-columns: 1fr;
+        margin-left: 0;
+        gap: 0.5rem;
+    }
+
+    .del-staff-btn {
+        grid-column: 1 / 2;
+        justify-self: end;
+    }
 }
 
 /* Request Table */
@@ -1041,6 +1106,14 @@ body {
     border: 1.5px solid #000;
 }
 
+#shift-container {
+    overflow: visible;
+}
+
+#shift-container.request-table-wrapper {
+    overflow: visible;
+}
+
 .print-only {
     display: none;
 }
@@ -1053,15 +1126,26 @@ body {
     padding-top: 0.8rem;
 }
 
+.shift-table {
+    --shift-name-col-width: 88px;
+    --shift-day-col-width: calc((100% - var(--shift-name-col-width)) / 31);
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    table-layout: fixed;
+}
+
 .shift-table th:not(.sticky-col),
 .shift-table td:not(.sticky-col) {
-    width: 34px;
-    min-width: 34px;
-    max-width: 34px;
+    width: var(--shift-day-col-width);
+    min-width: 0;
+    max-width: var(--shift-day-col-width);
 }
 
 .shift-table th {
-    height: 146px;
+    height: 132px;
+    font-size: 0.78rem;
+    padding: 0.15rem 0;
 }
 
 .shift-table .shift-month-cell {
@@ -1077,32 +1161,45 @@ body {
 }
 
 .shift-table .event-two-col {
-    margin: 6px auto 0;
+    margin: 4px auto 0;
     display: inline-flex;
     gap: 1px;
-    width: 23px;
+    width: 18px;
     justify-content: center;
     align-items: flex-start;
-    overflow: visible;
+    overflow: hidden;
 }
 
 .shift-table .event-col {
     writing-mode: vertical-rl;
     text-orientation: upright;
-    font-size: 0.62rem;
+    font-size: 0.5rem;
     font-weight: 400;
     color: var(--text-muted);
     line-height: 1.05;
-    width: 10px;
-    flex: 0 0 10px;
-    max-height: 116px;
+    width: 8px;
+    flex: 0 0 8px;
+    max-height: 100px;
     overflow: hidden;
-    letter-spacing: 1px;
+    letter-spacing: 0;
 }
 
 .shift-table th.shift-day-th {
     position: sticky;
     top: 22px;
+}
+
+.shift-table th.shift-day-th .date-label {
+    color: var(--text-main);
+    font-weight: 700;
+}
+
+.shift-table th.shift-day-th.day-sun .date-label {
+    color: var(--color-sunday);
+}
+
+.shift-table th.shift-day-th.day-holiday .date-label {
+    color: var(--color-holiday);
 }
 
 .shift-table thead tr.month-top-row th {
@@ -1140,7 +1237,7 @@ body {
 }
 
 .shift-table .daily-total-cell {
-    font-size: 0.85rem;
+    font-size: 0.72rem;
 }
 
 .shift-table .shift-time-row td {
@@ -1156,9 +1253,133 @@ body {
 .shift-table .shift-time-cell {
     text-align: left;
     padding: 0.45rem 0.6rem;
-    font-size: 0.8rem;
+    font-size: 0.72rem;
     color: var(--text-main);
     white-space: nowrap;
+}
+
+.shift-table .sticky-col {
+    width: var(--shift-name-col-width);
+    min-width: var(--shift-name-col-width);
+    max-width: var(--shift-name-col-width);
+    padding: 0.25rem;
+    font-size: 0.78rem;
+    white-space: nowrap;
+}
+
+.shift-table .staff-summary-cell {
+    position: relative;
+    overflow: visible;
+}
+
+.shift-table .staff-summary-trigger {
+    cursor: default;
+    display: inline-block;
+}
+
+.shift-table .staff-summary-tooltip {
+    position: absolute;
+    right: calc(100% + 8px);
+    top: 50%;
+    transform: translateY(-50%);
+    min-width: 110px;
+    padding: 0.5rem 0.6rem;
+    border-radius: 0.6rem;
+    background: rgba(15, 23, 42, 0.96);
+    color: #fff;
+    font-size: 0.72rem;
+    line-height: 1.5;
+    text-align: left;
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+    z-index: 30;
+    white-space: nowrap;
+}
+
+.shift-table .staff-summary-cell:hover .staff-summary-tooltip {
+    opacity: 1;
+    visibility: visible;
+}
+
+.shift-table td.cell.c-1 {
+    background: #fde68a;
+    color: #111827;
+    font-weight: 700;
+}
+
+.shift-table td.cell.c-6 {
+    background: #ffffff;
+    color: #111827;
+}
+
+.shift-table td.cell.c-10 {
+    background: #d1d5db;
+    color: #111827;
+    font-weight: 700;
+}
+
+.shift-table td.cell.c-k,
+.shift-table td.cell.c-v {
+    background: #ef4444;
+    color: #ffffff;
+    font-weight: 700;
+}
+
+@media (max-width: 1280px) {
+    .shift-table {
+        --shift-name-col-width: 76px;
+    }
+
+    .shift-table th {
+        height: 120px;
+        font-size: 0.72rem;
+    }
+
+    .shift-table .sticky-col {
+        font-size: 0.72rem;
+    }
+
+    .shift-table .event-two-col {
+        width: 16px;
+    }
+
+    .shift-table .event-col {
+        width: 7px;
+        flex: 0 0 7px;
+        font-size: 0.44rem;
+        max-height: 92px;
+    }
+}
+
+@media (max-width: 1080px) {
+    .shift-table {
+        --shift-name-col-width: 68px;
+    }
+
+    .shift-table th {
+        height: 108px;
+        font-size: 0.66rem;
+    }
+
+    .shift-table .sticky-col,
+    .shift-table .daily-total-cell,
+    .shift-table .shift-time-cell {
+        font-size: 0.66rem;
+    }
+
+    .shift-table .event-two-col {
+        width: 14px;
+    }
+
+    .shift-table .event-col {
+        width: 6px;
+        flex: 0 0 6px;
+        font-size: 0.4rem;
+        max-height: 84px;
+    }
 }
 
 @media (max-width: 768px) {
@@ -1188,6 +1409,7 @@ body {
         color: black !important;
         padding: 0;
         margin: 0;
+        font-size: 12px;
     }
 
     .hide-on-print,
@@ -1215,6 +1437,15 @@ body {
         max-width: 100%;
     }
 
+    .main-content,
+    #shift-container,
+    .request-table-wrapper {
+        width: 100% !important;
+        overflow: visible !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+    }
+
     .glass-panel {
         background: transparent !important;
         box-shadow: none !important;
@@ -1222,60 +1453,90 @@ body {
         padding: 0 !important;
     }
 
-    .request-table-wrapper {
-        overflow: visible !important;
-    }
-
     .shift-table {
         width: 100%;
         border-collapse: collapse;
         table-layout: fixed;
-        font-size: 10px;
+        font-size: 12px;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
     }
 
     .shift-table th:not(.sticky-col),
     .shift-table td:not(.sticky-col) {
-        width: 26px;
-        min-width: 26px;
-        max-width: 26px;
+        width: 34px;
+        min-width: 34px;
+        max-width: 34px;
     }
 
     .shift-table th {
-        height: 114px;
+        height: 150px;
     }
 
     .shift-table thead tr.month-top-row th {
-        height: 18px;
-        min-height: 18px;
-        max-height: 18px;
-        font-size: 0.56rem;
+        height: 24px;
+        min-height: 24px;
+        max-height: 24px;
+        font-size: 0.72rem;
+        background: #fff !important;
+        color: #000 !important;
     }
 
     .shift-table th.shift-day-th {
-        top: 18px;
+        top: 24px;
+        background: #fff !important;
+        color: #000 !important;
+        font-size: 0.95rem;
+    }
+
+    .shift-table th.shift-day-th .date-label {
+        color: #000 !important;
+        font-weight: 700;
+        font-size: 1rem;
+        line-height: 1;
+    }
+
+    .shift-table th.shift-day-th.day-sun .date-label,
+    .shift-table th.shift-day-th.day-holiday .date-label {
+        color: #c1121f !important;
     }
 
     .shift-table .event-two-col {
-        width: 21px;
+        width: 26px;
         gap: 1px;
-        margin-top: 4px;
+        margin-top: 6px;
     }
 
     .shift-table .event-col {
-        width: 9px;
-        flex: 0 0 9px;
-        max-height: 90px;
-        font-size: 0.45rem;
+        width: 12px;
+        flex: 0 0 12px;
+        max-height: 110px;
+        font-size: 0.58rem;
         letter-spacing: 0;
+        color: #000 !important;
+    }
+
+    .shift-table .sticky-col {
+        width: 76px !important;
+        min-width: 76px !important;
+        max-width: 76px !important;
+        font-size: 0.9rem;
+        font-weight: 700;
+        padding: 2px 4px !important;
+        white-space: nowrap;
+    }
+
+    .shift-table .staff-summary-tooltip {
+        display: none !important;
     }
 
     .shift-table .daily-total-cell {
-        font-size: 0.68rem;
+        font-size: 0.82rem;
     }
 
     .shift-table .shift-time-cell {
-        font-size: 0.68rem;
-        padding: 0.3rem 0.4rem;
+        font-size: 0.82rem;
+        padding: 0.35rem 0.45rem;
     }
 
     #print-time-summary,
@@ -1285,15 +1546,16 @@ body {
 
     .shift-table th,
     .shift-table td {
-        border: 1.5px solid #000 !important;
-        padding: 1px 0;
+        border: 1.8px solid #000 !important;
+        padding: 2px 0;
         height: auto;
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
+        vertical-align: middle;
     }
 
     .shift-table td.cell.c-1 {
-        background: #d9d9d9 !important;
+        background: #fff !important;
         color: #000 !important;
     }
 
@@ -1303,26 +1565,44 @@ body {
     }
 
     .shift-table td.cell.c-10 {
-        background: #a6a6a6 !important;
+        background: #fff !important;
         color: #000 !important;
     }
 
     .shift-table td.cell.c-k {
-        background: #bfbfbf !important;
+        background: #fff !important;
         color: #000 !important;
     }
 
     .shift-table td.cell.c-v {
-        background: #595959 !important;
-        color: #fff !important;
+        background: #fff !important;
+        color: #000 !important;
+    }
+
+    .shift-table td,
+    .shift-table th,
+    .shift-table .daily-total-row td,
+    .shift-table .daily-total-row td.sticky-col,
+    .shift-table .shift-time-row td,
+    .shift-table .shift-time-row td.sticky-col,
+    .shift-table thead tr.month-top-row th.month-top-sticky {
+        background: #fff !important;
+        color: #000 !important;
     }
 
     .shift-table .sticky-col {
         position: static !important;
     }
 
+    .shift-table tr,
+    .shift-table thead,
+    .shift-table tbody {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+    }
+
     @page {
-        size: A4 landscape;
-        margin: 0.7cm;
+        size: A3 landscape;
+        margin: 0.9cm;
     }
 }

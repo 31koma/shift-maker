@@ -1,5 +1,25 @@
 document.addEventListener('DOMContentLoaded', () => {
     const MAX_EVENT_NAME_LENGTH = 20;
+    const HOLIDAYS_2026 = new Set([
+        '2026-01-01',
+        '2026-01-12',
+        '2026-02-11',
+        '2026-02-23',
+        '2026-03-20',
+        '2026-04-29',
+        '2026-05-03',
+        '2026-05-04',
+        '2026-05-05',
+        '2026-05-06',
+        '2026-07-20',
+        '2026-08-11',
+        '2026-09-21',
+        '2026-09-22',
+        '2026-09-23',
+        '2026-10-12',
+        '2026-11-03',
+        '2026-11-23'
+    ]);
     // --- State ---
     let today = new Date();
     let currentYear = today.getFullYear();
@@ -92,6 +112,7 @@ document.addEventListener('DOMContentLoaded', () => {
         while (currDate <= calendarEnd) {
             const dateStr = formatDateForData(currDate);
             const isOutOfRange = currDate < start || currDate > end;
+            const isHoliday = HOLIDAYS_2026.has(dateStr);
             const dayData = eventData[dateStr] || { eventName: '', busyDay: false };
 
             const dayOfWeek = currDate.getDay();
@@ -101,6 +122,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (dayOfWeek === 0) cell.classList.add('sunday');
             if (dayOfWeek === 6) cell.classList.add('saturday');
+            if (isHoliday) cell.classList.add('holiday');
 
             const isToday = today.toDateString() === currDate.toDateString();
             if (isToday) cell.classList.add('today');

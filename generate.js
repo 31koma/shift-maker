@@ -1,6 +1,27 @@
 document.addEventListener('DOMContentLoaded', () => {
     const SHIFT_TYPES = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"];
     const MAX_PUBLIC_HOLIDAYS = 8;
+    const MAX_CONSECUTIVE_WORK_DAYS = 3;
+    const HOLIDAYS_2026 = new Set([
+        '2026-01-01',
+        '2026-01-12',
+        '2026-02-11',
+        '2026-02-23',
+        '2026-03-20',
+        '2026-04-29',
+        '2026-05-03',
+        '2026-05-04',
+        '2026-05-05',
+        '2026-05-06',
+        '2026-07-20',
+        '2026-08-11',
+        '2026-09-21',
+        '2026-09-22',
+        '2026-09-23',
+        '2026-10-12',
+        '2026-11-03',
+        '2026-11-23'
+    ]);
     const MANUAL_ONLY_IRREGULAR_NAMES = new Set(["中西"]);
     const DEFAULT_GENERATE_RULES = {
         oneShiftCount: 1,
@@ -66,6 +87,90 @@ document.addEventListener('DOMContentLoaded', () => {
     const closeSavedResultsFooterBtn = document.getElementById('close-saved-results-footer');
     const savedResultsList = document.getElementById('saved-results-list');
 
+    function normalizeStaffData(rawStaffData) {
+        let normalized = rawStaffData;
+        let shouldSave = false;
+        if (!normalized || !normalized.fulltime) {
+            normalized = { fulltime: [], parttime: [], irregular: [] };
+        } else {
+            if (!normalized.irregular) {
+                normalized.irregular = [];
+            }
+            const promoteNames = ["岸本", "中川", "清水", "柿林"];
+            let migrated = false;
+            promoteNames.forEach(name => {
+                const ptIdx = normalized.parttime.findIndex(p => p.name === name);
+                if (ptIdx > -1) {
+                    const staffObj = normalized.parttime.splice(ptIdx, 1)[0];
+                    if (!normalized.fulltime.some(f => f.name === name)) {
+                        normalized.fulltime.push(staffObj);
+                        migrated = true;
+                    }
+                }
+            });
+            const promoteToIrreg = ["太田", "中西"];
+            promoteToIrreg.forEach(name => {
+                const ptIdx = normalized.parttime.findIndex(p => p.name === name);
+                if (ptIdx > -1) {
+                    const staffObj = normalized.parttime.splice(ptIdx, 1)[0];
+                    if (!normalized.irregular.some(f => f.name === name)) {
+                        normalized.irregular.push(staffObj);
+                        migrated = true;
+                    }
+                }
+            });
+
+            if (migrated) {
+                shouldSave = true;
+            }
+        }
+        const fulltimeSet = new Set(normalized.fulltime);
+        [...normalized.fulltime, ...normalized.parttime, ...normalized.irregular].forEach(s => {
+            if (s.canWorkOneShift === undefined) {
+                s.canWorkOneShift = fulltimeSet.has(s);
+                shouldSave = true;
+            }
+        });
+
+        const checkedOneShiftCount = [...normalized.fulltime, ...normalized.parttime, ...normalized.irregular]
+            .filter(s => s.checked)
+            .filter(s => !!s.canWorkOneShift)
+            .length;
+        if (checkedOneShiftCount === 0) {
+            normalized.fulltime.forEach(s => {
+                if (s.checked && !s.canWorkOneShift) {
+                    s.canWorkOneShift = true;
+                    shouldSave = true;
+                }
+            });
+        }
+
+        if (shouldSave) {
+            localStorage.setItem('shiftApp_staffData', JSON.stringify(normalized));
+        }
+        return normalized;
+    }
+
+    function buildActiveStaffFromData(sourceStaffData) {
+        return [
+            ...sourceStaffData.fulltime.filter(s => s.checked).map(s => ({ name: s.name, isFulltime: true, isIrregular: false, manualOnly: false, canWorkOneShift: !!s.canWorkOneShift, pubHolidays: Math.max(0, Math.min(MAX_PUBLIC_HOLIDAYS, parseInt(s.pubHolidays, 10) || 8)) })),
+            ...sourceStaffData.parttime.filter(s => s.checked).map(s => ({ name: s.name, isFulltime: false, isIrregular: false, manualOnly: false, canWorkOneShift: !!s.canWorkOneShift, pubHolidays: Math.max(0, Math.min(MAX_PUBLIC_HOLIDAYS, parseInt(s.pubHolidays, 10) || 8)) })),
+            ...sourceStaffData.irregular.filter(s => s.checked).map(s => ({
+                name: s.name,
+                isFulltime: false,
+                isIrregular: true,
+                manualOnly: MANUAL_ONLY_IRREGULAR_NAMES.has(s.name),
+                canWorkOneShift: !!s.canWorkOneShift,
+                pubHolidays: Math.max(0, Math.min(MAX_PUBLIC_HOLIDAYS, parseInt(s.pubHolidays, 10) || 8))
+            }))
+        ];
+    }
+
+    function refreshStaffData() {
+        staffData = normalizeStaffData(JSON.parse(localStorage.getItem('shiftApp_staffData')));
+        activeStaff = buildActiveStaffFromData(staffData);
+    }
+
     // Load data
     let eventData = JSON.parse(localStorage.getItem('shiftApp_eventData')) || {};
     let requestData = JSON.parse(localStorage.getItem('shiftApp_requestData')) || {};
@@ -74,55 +179,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let lastGeneratedDates = [];
     let lastGeneratedStaffStats = [];
     let generationCount = 0;
-    let staffData = JSON.parse(localStorage.getItem('shiftApp_staffData'));
-    if (!staffData || !staffData.fulltime) {
-        staffData = { fulltime: [], parttime: [], irregular: [] };
-    } else {
-        if (!staffData.irregular) {
-            staffData.irregular = [];
-        }
-        const promoteNames = ["岸本", "中川", "清水", "柿林"];
-        let migrated = false;
-        promoteNames.forEach(name => {
-            const ptIdx = staffData.parttime.findIndex(p => p.name === name);
-            if (ptIdx > -1) {
-                const staffObj = staffData.parttime.splice(ptIdx, 1)[0];
-                if (!staffData.fulltime.some(f => f.name === name)) {
-                    staffData.fulltime.push(staffObj);
-                    migrated = true;
-                }
-            }
-        });
-        const promoteToIrreg = ["太田", "中西"];
-        promoteToIrreg.forEach(name => {
-            const ptIdx = staffData.parttime.findIndex(p => p.name === name);
-            if (ptIdx > -1) {
-                const staffObj = staffData.parttime.splice(ptIdx, 1)[0];
-                if (!staffData.irregular.some(f => f.name === name)) {
-                    staffData.irregular.push(staffObj);
-                    migrated = true;
-                }
-            }
-        });
-
-        if (migrated) {
-            localStorage.setItem('shiftApp_staffData', JSON.stringify(staffData));
-        }
-    }
-
-
-
-    let activeStaff = [
-        ...staffData.fulltime.filter(s => s.checked).map(s => ({ name: s.name, isFulltime: true, isIrregular: false, manualOnly: false, pubHolidays: Math.max(0, Math.min(MAX_PUBLIC_HOLIDAYS, parseInt(s.pubHolidays, 10) || 8)) })),
-        ...staffData.parttime.filter(s => s.checked).map(s => ({ name: s.name, isFulltime: false, isIrregular: false, manualOnly: false, pubHolidays: Math.max(0, Math.min(MAX_PUBLIC_HOLIDAYS, parseInt(s.pubHolidays, 10) || 8)) })),
-        ...staffData.irregular.filter(s => s.checked).map(s => ({
-            name: s.name,
-            isFulltime: false,
-            isIrregular: true,
-            manualOnly: MANUAL_ONLY_IRREGULAR_NAMES.has(s.name),
-            pubHolidays: Math.max(0, Math.min(MAX_PUBLIC_HOLIDAYS, parseInt(s.pubHolidays, 10) || 8))
-        }))
-    ];
+    let staffData = normalizeStaffData(JSON.parse(localStorage.getItem('shiftApp_staffData')));
+    let activeStaff = buildActiveStaffFromData(staffData);
 
     init();
 
@@ -135,6 +193,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     function init() {
+        refreshStaffData();
         normalizeRequestData();
         bindEvents();
         renderTimeSummary();
@@ -150,6 +209,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (byStaff[staffName] === '有休') {
                     byStaff[staffName] = '有';
                     changed = true;
+                } else if (byStaff[staffName] === '特休') {
+                    byStaff[staffName] = '特';
+                    changed = true;
                 }
             });
         });
@@ -164,12 +226,17 @@ document.addEventListener('DOMContentLoaded', () => {
         SHIFT_TYPES.forEach(type => {
             settings[type] = { ...DEFAULT_TIME_SETTINGS[type], ...(saved[type] || {}) };
         });
+        if (!settings["1"].enabled) {
+            settings["1"].enabled = true;
+        }
         return settings;
     }
 
     function loadGenerateRules() {
         const saved = JSON.parse(localStorage.getItem('shiftApp_generateRules')) || {};
-        return { ...DEFAULT_GENERATE_RULES, ...saved };
+        const rules = { ...DEFAULT_GENERATE_RULES, ...saved };
+        rules.oneShiftCount = Math.max(1, parseInt(rules.oneShiftCount, 10) || DEFAULT_GENERATE_RULES.oneShiftCount);
+        return rules;
     }
 
     function saveGenerateRules() {
@@ -280,6 +347,8 @@ document.addEventListener('DOMContentLoaded', () => {
             nextSettings[type].end = endInput.value;
         });
 
+        nextSettings["1"].enabled = true;
+
         const hasEnabled = SHIFT_TYPES.some(type => nextSettings[type].enabled);
         if (!hasEnabled) {
             alert('少なくとも1つはONにしてください。');
@@ -348,7 +417,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         const nextRules = {
             ...generateRules,
-            oneShiftCount: getNum('rule-1-count', generateRules.oneShiftCount),
+            oneShiftCount: Math.max(1, getNum('rule-1-count', generateRules.oneShiftCount)),
             tenShiftCount: getNum('rule-10-count', generateRules.tenShiftCount),
             oneFulltimeOnly: getChk('rule-1-fulltime-only', generateRules.oneFulltimeOnly),
             oneNoAfterTen: getChk('rule-1-no-after-10', generateRules.oneNoAfterTen),
@@ -517,6 +586,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderRuleLogicSummary() {
         if (!ruleLogicSummary) return;
+        refreshStaffData();
 
         const assignable = activeStaff.filter(s => !s.manualOnly);
         const totalStaff = assignable.length;
@@ -527,16 +597,19 @@ document.addEventListener('DOMContentLoaded', () => {
         const p1 = Math.max(0, generateRules.tenFtProb1 || 0);
         const p2 = Math.max(0, generateRules.tenFtProb2 || 0);
         const p3 = Math.max(0, generateRules.tenFtProb3 || 0);
+        const oneShiftTargetCount = assignable.filter(s => s.canWorkOneShift).length;
+        const oneShiftFulltimeCount = assignable.filter(s => s.isFulltime && s.canWorkOneShift).length;
+        const oneShiftTargetText = `①参加スタッフ${oneShiftTargetCount}人（うち正社員${oneShiftFulltimeCount}人）`;
 
         const lines = [
             `・人数目安: スタッフ総数(${totalStaff}人)と公休設定の平均から日ごとの目安人数を計算`,
             `・通常日: ${normalRange.min}〜${normalRange.max}人目安`,
             `・人数多めチェック日: ${eventRange.min}〜${eventRange.max}人目安（通常日より少し多め）`,
-            `・①: 1日${generateRules.oneShiftCount}人（${generateRules.oneFulltimeOnly ? '正社員のみ' : '全スタッフ可'} / ${generateRules.oneNoAfterTen ? '前日⑩は除外' : '前日⑩も可'}）`,
+            `・①: 1日${generateRules.oneShiftCount}人（${oneShiftTargetText} / 正社員・パートを区別せず①参加者全体で均等化 / ⑩の翌日は①禁止 / ①の翌日は必ず公休）`,
             `・⑩: 1日${generateRules.tenShiftCount}人、正社員最低${generateRules.requireFulltimeOn10 ? '1人' : '0人'}、正社員人数確率=${p1}%/${p2}%/${p3}%`,
-            '・公休: 各スタッフ設定回数（上限8）を優先、最大3連休・2連休を月1回以上になるよう補正',
-            `・未割当: ${generateRules.fillOffAsKoukyu ? '公休(公)で埋める' : '空欄のまま'}（必要に応じて6/10で補完）`,
-            '・最終調整: 人数が少ない日を再配分して下振れを抑制し、月全体で偏りを減らす'
+            '・公休: 各スタッフ設定回数（上限8）を優先、自動生成の公休は最大2連休までに補正',
+            `・未割当: ${generateRules.fillOffAsKoukyu ? '⑥で埋める' : '空欄のまま'}（必要に応じて6/10で補完）`,
+            '・最終調整: 人数が少ない日を再配分して下振れを抑制し、土日祝の勤務/休み回数差もできるだけ均等化。3連勤の翌日は必ず公休'
         ];
 
         ruleLogicSummary.innerHTML = lines.map(line => `<div>${escapeHtml(line)}</div>`).join('');
@@ -576,6 +649,7 @@ document.addEventListener('DOMContentLoaded', () => {
             currentTargetMonth = 1;
             currentYear++;
         }
+        refreshStaffData();
         updateMonthDisplay();
     }
 
@@ -650,7 +724,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function isOffValue(val) {
-        return val === '休' || val === '有休' || val === '有' || val === '公';
+        return val === '休' || val === '有休' || val === '有' || val === '特休' || val === '特' || val === '公';
     }
 
     function isBusyDay(data) {
@@ -696,7 +770,7 @@ document.addEventListener('DOMContentLoaded', () => {
             streak++;
             i++;
         }
-        return streak <= 3;
+        return streak <= 2;
     }
 
     function applyPublicHolidayPattern(staffStats, dates) {
@@ -716,29 +790,37 @@ document.addEventListener('DOMContentLoaded', () => {
             const candidateIdx = [];
             dateKeys.forEach((dateStr, idx) => {
                 const v = s.schedule[dateStr] || '';
-                if (v === '休' || v === '有休' || v === '有') return;
+                if (v === '休' || v === '有休' || v === '有' || v === '特休' || v === '特') return;
                 if (s.fixedPublicDates && s.fixedPublicDates.has(dateStr)) return;
                 if (v === '1' || v === '10') return;
                 candidateIdx.push(idx);
             });
 
-            if (targetPublic >= 2) {
-                const pairStarts = [];
-                for (let i = 0; i < candidateIdx.length - 1; i++) {
-                    const a = candidateIdx[i];
-                    const b = candidateIdx[i + 1];
-                    if (b === a + 1) pairStarts.push(a);
-                }
-                if (pairStarts.length > 0) {
-                    shuffleInPlace(pairStarts);
-                    const start = pairStarts[0];
-                    selected.add(start);
-                    selected.add(start + 1);
-                }
+            function getPublicSpreadScore(idx) {
+                if (!selected.size) return 999;
+
+                let minDistance = 999;
+                selected.forEach(selectedIdx => {
+                    minDistance = Math.min(minDistance, Math.abs(selectedIdx - idx));
+                });
+
+                const prevSelected = selected.has(idx - 1) ? 1 : 0;
+                const nextSelected = selected.has(idx + 1) ? 1 : 0;
+                const adjacencyPenalty = (prevSelected + nextSelected) * 100;
+                return minDistance - adjacencyPenalty;
             }
 
             const restCandidates = [...candidateIdx];
-            shuffleInPlace(restCandidates);
+            while (selected.size < targetPublic && restCandidates.length > 0) {
+                const selectable = restCandidates
+                    .filter(idx => !selected.has(idx))
+                    .filter(idx => canPlacePublicWithoutOver3(selected, idx, dateKeys.length))
+                    .sort((a, b) => randomTieBreak(getPublicSpreadScore(b) - getPublicSpreadScore(a)));
+
+                if (!selectable.length) break;
+                selected.add(selectable[0]);
+            }
+
             restCandidates.forEach(idx => {
                 if (selected.size >= targetPublic) return;
                 if (selected.has(idx)) return;
@@ -755,7 +837,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             dateKeys.forEach((dateStr, idx) => {
                 const v = s.schedule[dateStr] || '';
-                if (v === '休' || v === '有休' || v === '有') return;
+                if (v === '休' || v === '有休' || v === '有' || v === '特休' || v === '特') return;
                 if (s.fixedPublicDates && s.fixedPublicDates.has(dateStr)) {
                     s.schedule[dateStr] = '公';
                     return;
@@ -767,6 +849,99 @@ document.addEventListener('DOMContentLoaded', () => {
                     s.schedule[dateStr] = '6';
                 }
             });
+        });
+    }
+
+    function getGeneratedPublicReplacementValue(staff, dateObj) {
+        if (timeSettings["6"] && timeSettings["6"].enabled) return '6';
+        if (timeSettings["10"] && timeSettings["10"].enabled) return '10';
+        if (timeSettings["1"] && timeSettings["1"].enabled && staff.canWorkOneShift) return '1';
+        return '';
+    }
+
+    function enforceMaxTwoConsecutiveGeneratedPublicHolidays(staffStats, dates) {
+        const dateKeys = dates.map(d => formatDateForData(d));
+
+        staffStats.forEach(staff => {
+            if (staff.manualOnly) return;
+
+            let changed = true;
+            while (changed) {
+                changed = false;
+
+                for (let start = 0; start < dateKeys.length; start++) {
+                    const startDateStr = dateKeys[start];
+                    if ((staff.schedule[startDateStr] || '') !== '公') continue;
+
+                    let end = start;
+                    while (end + 1 < dateKeys.length && (staff.schedule[dateKeys[end + 1]] || '') === '公') {
+                        end++;
+                    }
+
+                    const runLength = end - start + 1;
+                    if (runLength <= 2) {
+                        start = end;
+                        continue;
+                    }
+
+                    let brokeRun = false;
+                    const candidateOrder = [];
+                    for (let idx = start + 1; idx < end; idx++) candidateOrder.push(idx);
+                    candidateOrder.push(start, end);
+
+                    for (const idx of candidateOrder) {
+                        const dateStr = dateKeys[idx];
+                        if (staff.fixedPublicDates && staff.fixedPublicDates.has(dateStr)) continue;
+                        if (hasFixedOffRequest(staff.name, dateStr)) continue;
+
+                        const replacement = getGeneratedPublicReplacementValue(staff, dates[idx]);
+                        if (!replacement) continue;
+                        if (replacement === '1') {
+                            if (idx > 0 && (staff.schedule[dateKeys[idx - 1]] || '') === '10') continue;
+                        }
+                        if (!canAssignWorkOnDate(staff, dateKeys, idx)) continue;
+
+                        applyShiftValue(staff, dateStr, replacement, isWeekendOrHoliday(dates[idx], dateStr));
+                        if (replacement === '1') {
+                            const nextIdx = idx + 1;
+                            if (nextIdx < dateKeys.length) {
+                                const nextDateStr = dateKeys[nextIdx];
+                                staff.fixedPublicDates.add(nextDateStr);
+                                applyShiftValue(staff, nextDateStr, '公', isWeekendOrHoliday(dates[nextIdx], nextDateStr));
+                            }
+                        }
+                        changed = true;
+                        brokeRun = true;
+                        break;
+                    }
+
+                    start = end;
+                    if (brokeRun) break;
+                }
+            }
+        });
+    }
+
+    function enforceRestAfterThreeConsecutiveWorkdays(staffStats, dates) {
+        const dateKeys = dates.map(d => formatDateForData(d));
+
+        staffStats.forEach(staff => {
+            if (staff.manualOnly) return;
+
+            for (let idx = 0; idx < dateKeys.length - 3; idx++) {
+                const a = staff.schedule[dateKeys[idx]] || '';
+                const b = staff.schedule[dateKeys[idx + 1]] || '';
+                const c = staff.schedule[dateKeys[idx + 2]] || '';
+                if (!isWorkValue(a) || !isWorkValue(b) || !isWorkValue(c)) continue;
+
+                const nextIdx = idx + 3;
+                const nextDateStr = dateKeys[nextIdx];
+                const nextVal = staff.schedule[nextDateStr] || '';
+                if (!isWorkValue(nextVal)) continue;
+
+                staff.fixedPublicDates.add(nextDateStr);
+                applyShiftValue(staff, nextDateStr, '公', isWeekendOrHoliday(dates[nextIdx], nextDateStr));
+            }
         });
     }
 
@@ -790,13 +965,13 @@ document.addEventListener('DOMContentLoaded', () => {
     function enforceIrregularShiftRules(staffStats, dates) {
         dates.forEach(d => {
             const dateStr = formatDateForData(d);
-            const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+            const isSpecialTargetDay = isWeekendOrHoliday(d, dateStr);
             staffStats.forEach(s => {
                 if (s.manualOnly || !s.isIrregular) return;
                 const v = s.schedule[dateStr] || '';
                 // イレギュラーは6専用（休み希望は尊重）
                 if (v === '10' || v === '1') {
-                    applyShiftValue(s, dateStr, '6', isWeekend);
+                    applyShiftValue(s, dateStr, '6', isSpecialTargetDay);
                 }
             });
         });
@@ -809,17 +984,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const dateKeys = dates.map(d => formatDateForData(d));
         dateKeys.forEach((dateStr, idx) => {
-            const dayOfWeek = dates[idx].getDay();
-            const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+            const isSpecialTargetDay = isWeekendOrHoliday(dates[idx], dateStr);
 
             staffStats.forEach(s => {
                 if (s.manualOnly) return;
                 const currentVal = s.schedule[dateStr] || '';
                 if (currentVal !== '') return;
+                if (!canAssignWorkOnDate(s, dateKeys, idx)) return;
 
-                // 6/10 両方ONなら少ない方へ寄せる。片方のみONならその数字で埋める。
+                // 「未割当は⑥で埋める」がONなら、空欄補完は⑥固定にする。
                 let nextVal = '';
-                if (use10 && use6) {
+                if (generateRules.fillOffAsKoukyu && use6) {
+                    nextVal = '6';
+                } else if (use10 && use6) {
                     nextVal = s.count10 <= s.count6 ? '10' : '6';
                 } else if (use10) {
                     nextVal = '10';
@@ -830,7 +1007,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 s.schedule[dateStr] = nextVal;
                 if (nextVal === '10') s.count10++;
                 if (nextVal === '6') s.count6++;
-                if (isWeekend) s.countWeekend++;
+                if (isSpecialTargetDay) {
+                    s.countWeekend++;
+                    s.countHolidayWork++;
+                }
             });
         });
     }
@@ -878,23 +1058,29 @@ document.addEventListener('DOMContentLoaded', () => {
                 let current = dailyCountMap[dateStr] || 0;
                 if (current >= minNeed) return;
 
-                const isWeekend = dates[idx].getDay() === 0 || dates[idx].getDay() === 6;
+                const isSpecialTargetDay = isWeekendOrHoliday(dates[idx], dateStr);
                 const candidates = staffStats
                     .filter(s => !s.manualOnly)
                     .filter(s => (s.schedule[dateStr] || '') === '公')
-                    .sort((a, b) => (a.count6 + a.count10) - (b.count6 + b.count10));
+                    .filter(s => canAssignWorkOnDate(s, dateKeys, idx))
+                    .sort((a, b) => {
+                        const fairnessCompare = compareHolidayFairness(a, b, staffStats);
+                        if (fairnessCompare !== 0) return fairnessCompare;
+                        return (a.count6 + a.count10) - (b.count6 + b.count10);
+                    });
 
                 for (let i = 0; i < candidates.length && current < minNeed; i++) {
                     const s = candidates[i];
+                    if (s.fixedPublicDates && s.fixedPublicDates.has(dateStr)) continue;
                     const donorDateStr = getBestDonorDate(s, dateStr);
                     if (!donorDateStr) continue;
 
                     const donorDateObj = dates.find(d => formatDateForData(d) === donorDateStr);
                     if (!donorDateObj) continue;
-                    const donorWeekend = donorDateObj.getDay() === 0 || donorDateObj.getDay() === 6;
+                    const donorIsSpecialTargetDay = isWeekendOrHoliday(donorDateObj, donorDateStr);
 
-                    applyShiftValue(s, donorDateStr, '公', donorWeekend);
-                    applyShiftValue(s, dateStr, '6', isWeekend);
+                    applyShiftValue(s, donorDateStr, '公', donorIsSpecialTargetDay);
+                    applyShiftValue(s, dateStr, '6', isSpecialTargetDay);
                     dailyCountMap[donorDateStr] = Math.max(0, (dailyCountMap[donorDateStr] || 0) - 1);
                     dailyCountMap[dateStr] = (dailyCountMap[dateStr] || 0) + 1;
                     current = dailyCountMap[dateStr] || 0;
@@ -938,19 +1124,25 @@ document.addEventListener('DOMContentLoaded', () => {
             const busyIdx = dateKeys.indexOf(lowBusy.ds);
             const normalIdx = dateKeys.indexOf(highNormal.ds);
             if (busyIdx < 0 || normalIdx < 0) break;
-            const busyIsWeekend = dates[busyIdx].getDay() === 0 || dates[busyIdx].getDay() === 6;
-            const normalIsWeekend = dates[normalIdx].getDay() === 0 || dates[normalIdx].getDay() === 6;
+            const busyIsSpecialTargetDay = isWeekendOrHoliday(dates[busyIdx], lowBusy.ds);
+            const normalIsSpecialTargetDay = isWeekendOrHoliday(dates[normalIdx], highNormal.ds);
 
             const candidates = staffStats
                 .filter(s => !s.manualOnly)
                 .filter(s => (s.schedule[highNormal.ds] || '') === '6')
                 .filter(s => (s.schedule[lowBusy.ds] || '') === '公')
-                .sort((a, b) => (a.count6 + a.count10) - (b.count6 + b.count10));
+                .filter(s => !(s.fixedPublicDates && s.fixedPublicDates.has(lowBusy.ds)))
+                .filter(s => canAssignWorkOnDate(s, dateKeys, busyIdx))
+                .sort((a, b) => {
+                    const fairnessCompare = compareHolidayFairness(a, b, staffStats);
+                    if (fairnessCompare !== 0) return fairnessCompare;
+                    return (a.count6 + a.count10) - (b.count6 + b.count10);
+                });
 
             for (let i = 0; i < candidates.length; i++) {
                 const s = candidates[i];
-                applyShiftValue(s, highNormal.ds, '公', normalIsWeekend);
-                applyShiftValue(s, lowBusy.ds, '6', busyIsWeekend);
+                applyShiftValue(s, highNormal.ds, '公', normalIsSpecialTargetDay);
+                applyShiftValue(s, lowBusy.ds, '6', busyIsSpecialTargetDay);
                 changed = true;
                 break;
             }
@@ -959,21 +1151,171 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function applyShiftValue(staff, dateStr, newVal, isWeekend) {
+    function applyShiftValue(staff, dateStr, newVal, isSpecialTargetDay) {
         const oldVal = staff.schedule[dateStr] || '';
         if (oldVal === newVal) return;
 
         if (oldVal === '1') staff.count1--;
         if (oldVal === '6') staff.count6--;
         if (oldVal === '10') staff.count10--;
-        if (isWeekend && isWorkValue(oldVal)) staff.countWeekend--;
+        if (isSpecialTargetDay && isWorkValue(oldVal)) {
+            staff.countWeekend--;
+            staff.countHolidayWork--;
+        }
 
         if (newVal === '1') staff.count1++;
         if (newVal === '6') staff.count6++;
         if (newVal === '10') staff.count10++;
-        if (isWeekend && isWorkValue(newVal)) staff.countWeekend++;
+        if (isSpecialTargetDay && isWorkValue(newVal)) {
+            staff.countWeekend++;
+            staff.countHolidayWork++;
+        }
 
         staff.schedule[dateStr] = newVal;
+    }
+
+    function assignOneShiftWithForcedRest(staff, dates, dateKeys, idx) {
+        const dateStr = dateKeys[idx];
+        applyShiftValue(staff, dateStr, '1', isWeekendOrHoliday(dates[idx], dateStr));
+
+        const nextIdx = idx + 1;
+        if (nextIdx < dateKeys.length) {
+            const nextDateStr = dateKeys[nextIdx];
+            staff.fixedPublicDates.add(nextDateStr);
+            applyShiftValue(staff, nextDateStr, '公', isWeekendOrHoliday(dates[nextIdx], nextDateStr));
+        }
+    }
+
+    function ensureOneShiftParticipation(staffStats, dates) {
+        const dateKeys = dates.map(d => formatDateForData(d));
+
+        function hasBlockingRequest(staffName, dateStr) {
+            const req = (requestData[dateStr] && requestData[dateStr][staffName]) || '';
+            return req === '10' || req === '1';
+        }
+
+        function canPlaceOneOnDate(staff, idx) {
+            const dateStr = dateKeys[idx];
+            const currentVal = staff.schedule[dateStr] || '';
+            if (currentVal === '10') return false;
+            if (generateRules.oneNoAfterTen && idx > 0) {
+                const prevVal = staff.schedule[dateKeys[idx - 1]] || '';
+                if (prevVal === '10') return false;
+            }
+            if (!isWorkValue(currentVal) && !canAssignWorkOnDate(staff, dateKeys, idx)) return false;
+            return true;
+        }
+
+        function canKeepRestAfterOne(staff, idx) {
+            const nextIdx = idx + 1;
+            if (nextIdx >= dateKeys.length) return true;
+
+            const nextDateStr = dateKeys[nextIdx];
+            const nextVal = staff.schedule[nextDateStr] || '';
+            if (!isWorkValue(nextVal)) return true;
+            if (hasBlockingRequest(staff.name, nextDateStr)) return false;
+            return true;
+        }
+
+        function findOneShiftCandidate(staff) {
+            let best = null;
+
+            dateKeys.forEach((dateStr, idx) => {
+                if (!canPlaceOneOnDate(staff, idx)) return;
+                if (!canKeepRestAfterOne(staff, idx)) return;
+
+                const currentVal = staff.schedule[dateStr] || '';
+                const nextDateStr = dateKeys[idx + 1] || '';
+                const nextVal = nextDateStr ? (staff.schedule[nextDateStr] || '') : '';
+
+                let score = 0;
+                if (currentVal === '6') score += 0;
+                else if (currentVal === '公' || currentVal === '') score += 20;
+                else score += 40;
+
+                if (idx + 1 < dateKeys.length && isWorkValue(nextVal)) score += 30;
+                if (isWeekendOrHoliday(dates[idx], dateStr)) score += 5;
+
+                if (!best || score < best.score) {
+                    best = { idx, score };
+                }
+            });
+
+            return best;
+        }
+
+        function findFallbackOneShiftCandidate(staff) {
+            let best = null;
+
+            dateKeys.forEach((dateStr, idx) => {
+                const currentVal = staff.schedule[dateStr] || '';
+                if (hasBlockingRequest(staff.name, dateStr)) return;
+
+                const nextIdx = idx + 1;
+                const nextDateStr = dateKeys[nextIdx] || '';
+                const nextVal = nextDateStr ? (staff.schedule[nextDateStr] || '') : '';
+                if (nextDateStr && hasBlockingRequest(staff.name, nextDateStr)) return;
+
+                let score = 0;
+                if (currentVal === '6') score += 0;
+                else if (currentVal === '公' || currentVal === '') score += 10;
+                else if (currentVal === '10') score += 40;
+                else score += 20;
+
+                if (nextVal === '10') score += 40;
+                else if (isWorkValue(nextVal)) score += 20;
+
+                if (!best || score < best.score) {
+                    best = { idx, score };
+                }
+            });
+
+            return best;
+        }
+
+        staffStats
+            .filter(s => !s.manualOnly && s.canWorkOneShift)
+            .filter(s => (s.count1 || 0) === 0)
+            .forEach(staff => {
+                const candidate = findOneShiftCandidate(staff);
+                if (!candidate) return;
+
+                const idx = candidate.idx;
+                assignOneShiftWithForcedRest(staff, dates, dateKeys, idx);
+            });
+
+        const totalOneShiftCount = staffStats.reduce((sum, s) => sum + (s.count1 || 0), 0);
+        if (totalOneShiftCount > 0) return;
+
+        const fallbackStaff = staffStats
+            .filter(s => !s.manualOnly && s.canWorkOneShift)
+            .sort((a, b) => compareOneShiftFairness(a, b, staffStats, false))[0];
+
+        if (!fallbackStaff) return;
+
+        const fallbackCandidate = findOneShiftCandidate(fallbackStaff) || findFallbackOneShiftCandidate(fallbackStaff);
+        if (!fallbackCandidate) {
+            const absoluteFallbackStaff = staffStats
+                .filter(s => !s.manualOnly && s.canWorkOneShift)
+                .sort((a, b) => compareOneShiftFairness(a, b, staffStats, false))[0];
+
+            if (!absoluteFallbackStaff) return;
+
+            const absoluteFallbackIdx = dateKeys.findIndex((dateStr, idx) => {
+                const req = (requestData[dateStr] && requestData[dateStr][absoluteFallbackStaff.name]) || '';
+                if (req === '休' || req === '有休' || req === '有' || req === '特休' || req === '特') return false;
+                if (idx > 0 && (absoluteFallbackStaff.schedule[dateKeys[idx - 1]] || '') === '10' && generateRules.oneNoAfterTen) return false;
+                return true;
+            });
+
+            if (absoluteFallbackIdx < 0) return;
+
+            assignOneShiftWithForcedRest(absoluteFallbackStaff, dates, dateKeys, absoluteFallbackIdx);
+            return;
+        }
+
+        const idx = fallbackCandidate.idx;
+        assignOneShiftWithForcedRest(fallbackStaff, dates, dateKeys, idx);
     }
 
     function enforceDailyTenAssignments(staffStats, dates) {
@@ -981,7 +1323,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const target10 = Math.max(0, generateRules.tenShiftCount || 0);
         if (target10 === 0) return;
 
-        const isOff = (v) => v === '公' || v === '有' || v === '有休' || v === '休';
+        const isOff = (v) => v === '公' || v === '有' || v === '有休' || v === '特' || v === '特休' || v === '休';
+        const dateKeys = dates.map(d => formatDateForData(d));
 
         function pickDesiredFtCount() {
             const p1 = Math.max(0, generateRules.tenFtProb1 || 0);
@@ -995,7 +1338,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return 3;
         }
 
-        dates.forEach(d => {
+        dates.forEach((d, idx) => {
             const dateStr = formatDateForData(d);
             const isWeekend = d.getDay() === 0 || d.getDay() === 6;
             const eligible = staffStats.filter(s => !s.manualOnly && !s.isIrregular);
@@ -1035,7 +1378,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const addable = eligible
                     .filter(s => {
                         const v = s.schedule[dateStr] || '';
-                        return v !== '10' && !isOff(v);
+                        return v !== '10' && v !== '1' && !isOff(v) && canAssignWorkOnDate(s, dateKeys, idx);
                     })
                     .sort((a, b) => {
                         const ftNow = tenMembers.filter(x => x.isFulltime).length;
@@ -1060,7 +1403,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         .filter(s => s.isFulltime)
                         .filter(s => {
                             const v = s.schedule[dateStr] || '';
-                            return v !== '10' && !isOff(v);
+                            return v !== '10' && v !== '1' && !isOff(v) && canAssignWorkOnDate(s, dateKeys, idx);
                         })
                         .sort((a, b) => a.count10 - b.count10);
                     if (ftCandidates.length > 0) {
@@ -1087,6 +1430,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function generateShift() {
+        refreshStaffData();
         if (activeStaff.length === 0) {
             alert('スタッフが選択されていません。');
             return;
@@ -1113,6 +1457,7 @@ document.addEventListener('DOMContentLoaded', () => {
             isFulltime: s.isFulltime,
             isIrregular: s.isIrregular,
             manualOnly: !!s.manualOnly,
+            canWorkOneShift: !!s.canWorkOneShift,
             pubHolidays: s.pubHolidays,
             fixedPublicDates: new Set(),
             count1: 0,
@@ -1120,6 +1465,7 @@ document.addEventListener('DOMContentLoaded', () => {
             count6: 0,
             countHoliday: 0, // NEW: track actual given holidays (休, 有休, 有, and 公)
             countWeekend: 0,
+            countHolidayWork: 0,
             schedule: {}
         }));
         const assignableStaff = staffStats.filter(s => !s.manualOnly);
@@ -1127,12 +1473,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const totalPublicHolidayTarget = assignableStaff.reduce((sum, s) => sum + (s.pubHolidays || 0), 0);
         const dailyMinimumByDate = {};
         const busyDayByDate = {};
+        const dateKeys = dates.map(d => formatDateForData(d));
 
         // Assign day by day
-        dates.forEach(d => {
+        dates.forEach((d, dateIdx) => {
             const dateStr = formatDateForData(d);
-            const dayOfWeek = d.getDay();
-            const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+            const isSpecialTargetDay = isWeekendOrHoliday(d, dateStr);
 
             const todayEvent = eventData[dateStr] || {};
 
@@ -1161,20 +1507,31 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
                 const req = (requestData[dateStr] && requestData[dateStr][s.name]) || '';
-                if (req === '休' || req === '有休' || req === '有') {
+                if (req === '休' || req === '有休' || req === '有' || req === '特休' || req === '特') {
                     if (req === '休') {
                         // 休み希望は自動生成時に公休として反映し、固定する
                         s.schedule[dateStr] = '公';
                         s.fixedPublicDates.add(dateStr);
+                    } else if (req === '特休' || req === '特') {
+                        s.schedule[dateStr] = '特';
                     } else {
                         s.schedule[dateStr] = '有';
                     }
                     s.countHoliday++;
                 } else if (req === '10' && timeSettings["10"].enabled) {
-                    s.schedule[dateStr] = '10';
-                    s.count10++;
-                    if (isWeekend) s.countWeekend++;
-                    req10_remaining--;
+                    if (getYesterdayShift(s, d) === '1') {
+                        s.schedule[dateStr] = '公';
+                        s.fixedPublicDates.add(dateStr);
+                        s.countHoliday++;
+                    } else {
+                        s.schedule[dateStr] = '10';
+                        s.count10++;
+                        if (isSpecialTargetDay) {
+                            s.countWeekend++;
+                            s.countHolidayWork++;
+                        }
+                        req10_remaining--;
+                    }
                 } else {
                     available.push(s);
                 }
@@ -1189,18 +1546,20 @@ document.addEventListener('DOMContentLoaded', () => {
                     const totalDays = dates.length;
                     const targetWorkDays = totalDays - s.pubHolidays;
                     const currentWorkDays = s.count1 + s.count10 + s.count6;
-                    if (generateRules.oneFulltimeOnly && (!s.isFulltime || s.isIrregular)) return false;
+                    if (!s.canWorkOneShift) return false;
                     if (generateRules.oneNoAfterTen && getYesterdayShift(s, d) === '10') return false;
+                    if (!canAssignWorkOnDate(s, dateKeys, dateIdx)) return false;
                     return currentWorkDays < targetWorkDays;
                 });
-                // 正社員とパートで①と⑩の回数を合わすため、count1 + count10 の合計でソート
-                candidates1.sort((a, b) => randomTieBreak((a.count1 + a.count10) - (b.count1 + b.count10)));
+
+                const sortCandidatesForOne = (a, b) => compareOneShiftFairness(a, b, staffStats, isSpecialTargetDay);
+
+                candidates1.sort(sortCandidatesForOne);
 
                 const assigned1 = candidates1.slice(0, req1);
-                assigned1.forEach(s => {
-                    s.schedule[dateStr] = '1';
-                    s.count1++;
-                    if (isWeekend) s.countWeekend++;
+
+                assigned1.slice(0, req1).forEach(s => {
+                    assignOneShiftWithForcedRest(s, dates, dateKeys, dateIdx);
                     removeFromAvailable(available, s);
                 });
             }
@@ -1213,15 +1572,25 @@ document.addEventListener('DOMContentLoaded', () => {
                     const totalDays = dates.length;
                     const targetWorkDays = totalDays - s.pubHolidays;
                     const currentWorkDays = s.count1 + s.count10 + s.count6;
-                    return s.isFulltime && !s.isIrregular && currentWorkDays < targetWorkDays;
+                    return s.isFulltime && !s.isIrregular && currentWorkDays < targetWorkDays && canAssignWorkOnDate(s, dateKeys, dateIdx);
                 });
                 candidates10_ft.sort((a, b) => randomTieBreak((a.count1 + a.count10) - (b.count1 + b.count10)));
+                if (isSpecialTargetDay) {
+                    candidates10_ft.sort((a, b) => {
+                        const fairnessCompare = compareHolidayFairness(a, b, staffStats);
+                        if (fairnessCompare !== 0) return fairnessCompare;
+                        return randomTieBreak((a.count1 + a.count10) - (b.count1 + b.count10));
+                    });
+                }
 
                 if (generateRules.requireFulltimeOn10 && !alreadyHasFtOn10 && candidates10_ft.length > 0) {
                     const ft = candidates10_ft[0];
                     ft.schedule[dateStr] = '10';
                     ft.count10++;
-                    if (isWeekend) ft.countWeekend++;
+                    if (isSpecialTargetDay) {
+                        ft.countWeekend++;
+                        ft.countHolidayWork++;
+                    }
                     removeFromAvailable(available, ft);
                     req10_remaining--;
                 }
@@ -1231,15 +1600,25 @@ document.addEventListener('DOMContentLoaded', () => {
                     const totalDays = dates.length;
                     const targetWorkDays = totalDays - s.pubHolidays;
                     const currentWorkDays = s.count1 + s.count10 + s.count6;
-                    return !s.isIrregular && currentWorkDays < targetWorkDays;
+                    return !s.isIrregular && currentWorkDays < targetWorkDays && canAssignWorkOnDate(s, dateKeys, dateIdx);
                 });
                 candidates10_all.sort((a, b) => randomTieBreak((a.count1 + a.count10) - (b.count1 + b.count10)));
+                if (isSpecialTargetDay) {
+                    candidates10_all.sort((a, b) => {
+                        const fairnessCompare = compareHolidayFairness(a, b, staffStats);
+                        if (fairnessCompare !== 0) return fairnessCompare;
+                        return randomTieBreak((a.count1 + a.count10) - (b.count1 + b.count10));
+                    });
+                }
 
                 const assigned10_rest = candidates10_all.slice(0, req10_remaining);
                 assigned10_rest.forEach(s => {
                     s.schedule[dateStr] = '10';
                     s.count10++;
-                    if (isWeekend) s.countWeekend++;
+                    if (isSpecialTargetDay) {
+                        s.countWeekend++;
+                        s.countHolidayWork++;
+                    }
                     removeFromAvailable(available, s);
                 });
             }
@@ -1250,7 +1629,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const totalDays = dates.length;
                     const targetWorkDays = totalDays - s.pubHolidays;
                     const currentWorkDays = s.count1 + s.count10 + s.count6;
-                    return currentWorkDays < targetWorkDays;
+                    return currentWorkDays < targetWorkDays && canAssignWorkOnDate(s, dateKeys, dateIdx);
                 });
 
                 candidates6.sort((a, b) => {
@@ -1268,7 +1647,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         return bRemainingWorkDays - aRemainingWorkDays;
                     }
 
-                    if (isWeekend) {
+                    if (isSpecialTargetDay) {
+                        const fairnessCompare = compareHolidayFairness(a, b, staffStats);
+                        if (fairnessCompare !== 0) return fairnessCompare;
                         const weekendCompare = a.countWeekend - b.countWeekend;
                         return randomTieBreak(weekendCompare);
                     }
@@ -1285,7 +1666,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 assigned6.forEach(s => {
                     s.schedule[dateStr] = '6';
                     s.count6++;
-                    if (isWeekend) s.countWeekend++;
+                    if (isSpecialTargetDay) {
+                        s.countWeekend++;
+                        s.countHolidayWork++;
+                    }
                     removeFromAvailable(available, s);
                 });
             }
@@ -1295,13 +1679,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 ? randomInt(2, 4)
                 : randomInt(0, 1);
             if (extraWorkTarget > 0) {
-                let extraCandidates = available.filter(s => !s.isIrregular);
+                let extraCandidates = available.filter(s => !s.isIrregular && canAssignWorkOnDate(s, dateKeys, dateIdx));
                 shuffleInPlace(extraCandidates);
                 const extras = extraCandidates.slice(0, extraWorkTarget);
                 extras.forEach(s => {
                     s.schedule[dateStr] = '6';
                     s.count6++;
-                    if (isWeekend) s.countWeekend++;
+                    if (isSpecialTargetDay) {
+                        s.countWeekend++;
+                        s.countHolidayWork++;
+                    }
                     removeFromAvailable(available, s);
                 });
             }
@@ -1313,16 +1700,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
                 if (generateRules.fillOffAsKoukyu) {
-                    const targetPublicHoliday = Math.max(0, Math.min(MAX_PUBLIC_HOLIDAYS, s.pubHolidays || 0));
-                    const currentPublicHoliday = getPublicHolidayCount(s);
-                    const remainingPublicHoliday = targetPublicHoliday - currentPublicHoliday;
-                    if (remainingPublicHoliday > 0) {
-                        s.schedule[dateStr] = '公';
-                    } else {
-                        // 公休上限に達していれば勤務へ寄せる（人数超過を許容）
+                    if (timeSettings["6"] && timeSettings["6"].enabled && canAssignWorkOnDate(s, dateKeys, dateIdx)) {
                         s.schedule[dateStr] = '6';
                         s.count6++;
-                        if (isWeekend) s.countWeekend++;
+                        if (isSpecialTargetDay) {
+                            s.countWeekend++;
+                            s.countHolidayWork++;
+                        }
+                    } else {
+                        s.schedule[dateStr] = '';
                     }
                 } else {
                     s.schedule[dateStr] = '';
@@ -1331,7 +1717,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         });
 
-        // 最終補正1: 公休(公)は設定値に合わせ、最大3連休・2連休を最低1回作る
+        // 最終補正1: 公休(公)は設定値に合わせ、3連休を避けるよう補正
         applyPublicHolidayPattern(staffStats, dates);
 
         // 最終的に残る空欄は、時間設定でONの勤務コード(6/10)で埋める
@@ -1347,6 +1733,14 @@ document.addEventListener('DOMContentLoaded', () => {
         enforceBusyDayHigherThanNormal(staffStats, dates, busyDayByDate);
         // 最終補正3: ⑩を毎日3人体制 + 正社員最低1人に合わせる
         enforceDailyTenAssignments(staffStats, dates);
+        // 最終補正4: ①参加ONのスタッフには月内で最低1回①を入れる
+        ensureOneShiftParticipation(staffStats, dates);
+        // 最終補正5: 土日祝勤務/休みの偏りを6勤務の持ち替えでできるだけ均等化
+        rebalanceSpecialDayFairness(staffStats, dates);
+        // 最終補正6: 自動生成された公休は最大2連休までに制限
+        enforceMaxTwoConsecutiveGeneratedPublicHolidays(staffStats, dates);
+        // 最終補正7: 3連勤した翌日は必ず公休にして4連勤を防止
+        enforceRestAfterThreeConsecutiveWorkdays(staffStats, dates);
 
         lastGeneratedDates = dates;
         lastGeneratedStaffStats = staffStats;
@@ -1360,7 +1754,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (val === '6') return 'c-6';
         if (val === '10') return 'c-10';
         if (/^(?:[2-5]|[7-9])$/.test(val)) return 'c-n';
-        if (val === '休' || val === '有休' || val === '有') return 'c-v';
+        if (val === '休' || val === '有休' || val === '有' || val === '特休' || val === '特') return 'c-v';
         if (val === '公') return 'c-k';
         return '';
     }
@@ -1393,6 +1787,149 @@ document.addEventListener('DOMContentLoaded', () => {
         return /^(?:10|[1-9])$/.test(String(val || ''));
     }
 
+    function isHolidayDateStr(dateStr) {
+        return HOLIDAYS_2026.has(dateStr);
+    }
+
+    function isWeekendOrHoliday(dateObj, dateStr = formatDateForData(dateObj)) {
+        const dayOfWeek = dateObj.getDay();
+        return dayOfWeek === 0 || dayOfWeek === 6 || isHolidayDateStr(dateStr);
+    }
+
+    function getStaffFairnessGroupKey(staff) {
+        if (staff.isIrregular) return 'irregular';
+        return staff.isFulltime ? 'fulltime' : 'parttime';
+    }
+
+    function getHolidayWorkCountGap(staff, staffStats) {
+        const groupKey = getStaffFairnessGroupKey(staff);
+        const sameGroup = staffStats.filter(s => getStaffFairnessGroupKey(s) === groupKey && !s.manualOnly);
+        if (!sameGroup.length) return 0;
+        const minCount = Math.min(...sameGroup.map(s => s.countHolidayWork || 0));
+        return (staff.countHolidayWork || 0) - minCount;
+    }
+
+    function compareHolidayFairness(a, b, staffStats) {
+        const aWork = a.countHolidayWork || 0;
+        const bWork = b.countHolidayWork || 0;
+        if (aWork !== bWork) return aWork - bWork;
+
+        const aOff = getSpecialOffCount(a);
+        const bOff = getSpecialOffCount(b);
+        if (aOff !== bOff) return bOff - aOff;
+
+        return randomTieBreak((a.count6 + a.count10) - (b.count6 + b.count10));
+    }
+
+    function getSpecialOffCount(staff) {
+        return Object.entries(staff.schedule || {}).reduce((sum, [dateStr, val]) => {
+            const dateObj = new Date(`${dateStr}T00:00:00`);
+            if (!isWeekendOrHoliday(dateObj, dateStr)) return sum;
+            return isOffValue(val) ? sum + 1 : sum;
+        }, 0);
+    }
+
+    function hasFixedOffRequest(staffName, dateStr) {
+        const req = (requestData[dateStr] && requestData[dateStr][staffName]) || '';
+        return req === '休' || req === '有' || req === '有休' || req === '特' || req === '特休';
+    }
+
+    function rebalanceSpecialDayFairness(staffStats, dates) {
+        const dateKeys = dates.map(d => formatDateForData(d));
+        const specialDateSet = new Set(
+            dateKeys.filter((dateStr, idx) => isWeekendOrHoliday(dates[idx], dateStr))
+        );
+
+        for (let pass = 0; pass < 12; pass++) {
+            const eligible = staffStats.filter(s => !s.manualOnly);
+            const sorted = [...eligible].sort((a, b) => {
+                const fairness = compareHolidayFairness(a, b, staffStats);
+                if (fairness !== 0) return fairness;
+                return randomTieBreak(0);
+            });
+            if (sorted.length < 2) return;
+
+            const low = sorted[0];
+            const high = sorted[sorted.length - 1];
+            const workDiff = (high.countHolidayWork || 0) - (low.countHolidayWork || 0);
+            if (workDiff <= 1) return;
+
+            let swapped = false;
+
+            for (let specialIdx = 0; specialIdx < dateKeys.length && !swapped; specialIdx++) {
+                const specialDateStr = dateKeys[specialIdx];
+                if (!specialDateSet.has(specialDateStr)) continue;
+
+                const highVal = high.schedule[specialDateStr] || '';
+                const lowVal = low.schedule[specialDateStr] || '';
+                if (highVal !== '6') continue;
+                if (lowVal !== '' && lowVal !== '公') continue;
+                if ((low.fixedPublicDates && low.fixedPublicDates.has(specialDateStr)) || hasFixedOffRequest(low.name, specialDateStr)) continue;
+                if (!canAssignWorkOnDate(low, dateKeys, specialIdx)) continue;
+
+                for (let normalIdx = 0; normalIdx < dateKeys.length && !swapped; normalIdx++) {
+                    const normalDateStr = dateKeys[normalIdx];
+                    if (specialDateSet.has(normalDateStr)) continue;
+
+                    const lowNormalVal = low.schedule[normalDateStr] || '';
+                    const highNormalVal = high.schedule[normalDateStr] || '';
+                    if (lowNormalVal !== '6') continue;
+                    if (highNormalVal !== '' && highNormalVal !== '公') continue;
+                    if ((high.fixedPublicDates && high.fixedPublicDates.has(normalDateStr)) || hasFixedOffRequest(high.name, normalDateStr)) continue;
+                    if (!canAssignWorkOnDate(high, dateKeys, normalIdx)) continue;
+
+                    applyShiftValue(high, specialDateStr, highNormalVal === '公' ? '公' : '', true);
+                    applyShiftValue(low, specialDateStr, '6', true);
+                    applyShiftValue(low, normalDateStr, lowVal === '公' ? '公' : '', false);
+                    applyShiftValue(high, normalDateStr, '6', false);
+                    swapped = true;
+                }
+            }
+
+            if (!swapped) return;
+        }
+    }
+
+    function compareOneShiftFairness(a, b, staffStats, isSpecialTargetDay) {
+        if ((a.count1 || 0) !== (b.count1 || 0)) {
+            return (a.count1 || 0) - (b.count1 || 0);
+        }
+        if (isSpecialTargetDay) {
+            const holidayCompare = compareHolidayFairness(a, b, staffStats);
+            if (holidayCompare !== 0) return holidayCompare;
+        }
+        const aTotalWork = (a.count1 || 0) + (a.count6 || 0) + (a.count10 || 0);
+        const bTotalWork = (b.count1 || 0) + (b.count6 || 0) + (b.count10 || 0);
+        return randomTieBreak(aTotalWork - bTotalWork);
+    }
+
+    function canAssignWorkOnDate(staff, dateKeys, targetIdx) {
+        const targetDateStr = dateKeys[targetIdx];
+        const currentVal = staff.schedule[targetDateStr] || '';
+        if (isWorkValue(currentVal)) return true;
+
+        const previousDateStr = targetIdx > 0 ? dateKeys[targetIdx - 1] : '';
+        if (previousDateStr && (staff.schedule[previousDateStr] || '') === '1') {
+            return false;
+        }
+
+        let streak = 1;
+
+        for (let i = targetIdx - 1; i >= 0; i--) {
+            const val = staff.schedule[dateKeys[i]] || '';
+            if (!isWorkValue(val)) break;
+            streak++;
+        }
+
+        for (let i = targetIdx + 1; i < dateKeys.length; i++) {
+            const val = staff.schedule[dateKeys[i]] || '';
+            if (!isWorkValue(val)) break;
+            streak++;
+        }
+
+        return streak <= MAX_CONSECUTIVE_WORK_DAYS;
+    }
+
     function getDailyWorkCounts(dates, staffStats) {
         return dates.map(d => {
             const dateStr = formatDateForData(d);
@@ -1415,11 +1952,89 @@ document.addEventListener('DOMContentLoaded', () => {
         return values;
     }
 
+    function getStaffShiftSummary(staff) {
+        const counts = {
+            publicHoliday: 0,
+            paidLeave: 0,
+            saturdayOff: 0,
+            sundayOff: 0,
+            holidayOff: 0
+        };
+
+        SHIFT_TYPES.forEach(type => {
+            counts[type] = 0;
+        });
+
+        Object.entries(staff.schedule || {}).forEach(([dateStr, rawVal]) => {
+            const val = String(rawVal || '');
+            const dateObj = new Date(`${dateStr}T00:00:00`);
+            const dayOfWeek = dateObj.getDay();
+            const isHoliday = isHolidayDateStr(dateStr);
+            const isOff = val === '公' || val === '有' || val === '有休' || val === '休';
+            if (val === '公') {
+                counts.publicHoliday += 1;
+            } else if (val === '有' || val === '有休' || val === '特' || val === '特休') {
+                counts.paidLeave += 1;
+            } else if (SHIFT_TYPES.includes(val)) {
+                counts[val] += 1;
+            }
+
+            if (isOff) {
+                if (dayOfWeek === 6) counts.saturdayOff += 1;
+                if (dayOfWeek === 0) counts.sundayOff += 1;
+                if (isHoliday) counts.holidayOff += 1;
+            }
+        });
+
+        return counts;
+    }
+
+    function buildStaffSummaryTooltipHtml(staff) {
+        const counts = getStaffShiftSummary(staff);
+        const shiftLabelMap = {
+            "1": "①",
+            "2": "②",
+            "3": "③",
+            "4": "④",
+            "5": "⑤",
+            "6": "⑥",
+            "7": "⑦",
+            "8": "⑧",
+            "9": "⑨",
+            "10": "⑩"
+        };
+        const lines = [
+            `公：${counts.publicHoliday}`,
+            `有：${counts.paidLeave}`,
+            `${shiftLabelMap["1"]}：${counts["1"]}`
+        ];
+
+        for (let i = 2; i <= 9; i++) {
+            if (counts[String(i)] > 0) {
+                lines.push(`${shiftLabelMap[String(i)]}：${counts[String(i)]}`);
+            }
+        }
+
+        lines.push(`${shiftLabelMap["10"]}：${counts["10"]}`);
+        lines.push(`土休：${counts.saturdayOff}`);
+        lines.push(`日休：${counts.sundayOff}`);
+        lines.push(`祝休：${counts.holidayOff}`);
+
+        return lines.map(line => `<div>${escapeHtml(line)}</div>`).join('');
+    }
+
     function applyCellValue(td, nextVal) {
         td.textContent = nextVal;
         td.className = 'cell';
         const cls = getCellClassByValue(nextVal);
         if (cls) td.classList.add(cls);
+    }
+
+    function updateStaffSummaryTooltipForRow(row, staff) {
+        if (!row || !staff) return;
+        const tooltip = row.querySelector('.staff-summary-tooltip');
+        if (!tooltip) return;
+        tooltip.innerHTML = buildStaffSummaryTooltipHtml(staff);
     }
 
     function handleShiftCellClick(e) {
@@ -1443,6 +2058,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         applyCellValue(td, nextVal);
+        updateStaffSummaryTooltipForRow(td.closest('tr'), target);
         updateDailyTotalRow();
         showToast('セルを変更しました');
     }
@@ -1467,6 +2083,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (dayOfWeek === 6) dayClass = 'day-sat';
 
             const dateStr = formatDateForData(d);
+            if (isHolidayDateStr(dateStr)) dayClass += `${dayClass ? ' ' : ''}day-holiday`;
             const eventName = (eventData[dateStr] && eventData[dateStr].eventName) || '';
             const eventHtml = eventName ? formatEventNameTwoVerticalCols(eventName) : '';
             const prevDate = index > 0 ? dates[index - 1] : null;
@@ -1475,7 +2092,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             monthRow += `<th class="${dayClass} month-top-day">${monthMarker}</th>`;
             dayRow += `<th class="${dayClass} shift-day-th" style="vertical-align: top; padding-top: 0.5rem;">
-                <div>${d.getDate()}</div>
+                <div class="date-label">${d.getDate()}</div>
                 ${eventHtml}
             </th>`;
         });
@@ -1492,7 +2109,8 @@ document.addEventListener('DOMContentLoaded', () => {
         function makeRows(group) {
             group.forEach(s => {
                 const displayName = s.name;
-                tbody += `<tr><td class="sticky-col">${displayName}</td>`;
+                const summaryTooltipHtml = buildStaffSummaryTooltipHtml(s);
+                tbody += `<tr><td class="sticky-col staff-summary-cell"><span class="staff-summary-trigger">${escapeHtml(displayName)}</span><div class="staff-summary-tooltip">${summaryTooltipHtml}</div></td>`;
                 dates.forEach(d => {
                     const dateStr = formatDateForData(d);
                     const rawVal = s.schedule[dateStr] || '';
