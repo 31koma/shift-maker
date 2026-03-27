@@ -1,7 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     const SHIFT_TYPES = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"];
     const MAX_PUBLIC_HOLIDAYS = 8;
-    const MAX_CONSECUTIVE_WORK_DAYS = 3;
+    const DEFAULT_MAX_CONSECUTIVE_WORK_DAYS = 3;
     const HOLIDAYS_2026 = new Set([
         '2026-01-01',
         '2026-01-12',
@@ -32,7 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
         tenFtProb1: 40,
         tenFtProb2: 40,
         tenFtProb3: 20,
-        fillOffAsKoukyu: false
+        allowFourConsecutive: false
     };
     const DEFAULT_TIME_SETTINGS = {
         "1": { enabled: true, start: "06:00", end: "14:30" },
@@ -236,6 +236,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const saved = JSON.parse(localStorage.getItem('shiftApp_generateRules')) || {};
         const rules = { ...DEFAULT_GENERATE_RULES, ...saved };
         rules.oneShiftCount = Math.max(1, parseInt(rules.oneShiftCount, 10) || DEFAULT_GENERATE_RULES.oneShiftCount);
+        rules.allowFourConsecutive = !!saved.allowFourConsecutive;
         return rules;
     }
 
@@ -384,7 +385,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setVal('rule-10-ft-p1', generateRules.tenFtProb1);
         setVal('rule-10-ft-p2', generateRules.tenFtProb2);
         setVal('rule-10-ft-p3', generateRules.tenFtProb3);
-        setChecked('rule-fill-off-k', generateRules.fillOffAsKoukyu);
+        setChecked('rule-allow-4-consecutive', generateRules.allowFourConsecutive);
         renderRuleLogicSummary();
 
         ruleSettingsModal.classList.remove('hidden');
@@ -425,7 +426,7 @@ document.addEventListener('DOMContentLoaded', () => {
             tenFtProb1: getNum('rule-10-ft-p1', generateRules.tenFtProb1),
             tenFtProb2: getNum('rule-10-ft-p2', generateRules.tenFtProb2),
             tenFtProb3: getNum('rule-10-ft-p3', generateRules.tenFtProb3),
-            fillOffAsKoukyu: getChk('rule-fill-off-k', generateRules.fillOffAsKoukyu)
+            allowFourConsecutive: getChk('rule-allow-4-consecutive', generateRules.allowFourConsecutive)
         };
 
         const probSum = nextRules.tenFtProb1 + nextRules.tenFtProb2 + nextRules.tenFtProb3;
@@ -608,8 +609,8 @@ document.addEventListener('DOMContentLoaded', () => {
             `・①: 1日${generateRules.oneShiftCount}人（${oneShiftTargetText} / 正社員・パートを区別せず①参加者全体で均等化 / ⑩の翌日は①禁止 / ①の翌日は必ず公休）`,
             `・⑩: 1日${generateRules.tenShiftCount}人、正社員最低${generateRules.requireFulltimeOn10 ? '1人' : '0人'}、正社員人数確率=${p1}%/${p2}%/${p3}%`,
             '・公休: 各スタッフ設定回数（上限8）を優先、自動生成の公休は最大2連休までに補正',
-            `・未割当: ${generateRules.fillOffAsKoukyu ? '⑥で埋める' : '空欄のまま'}（必要に応じて6/10で補完）`,
-            '・最終調整: 人数が少ない日を再配分して下振れを抑制し、土日祝の勤務/休み回数差もできるだけ均等化。3連勤の翌日は必ず公休'
+            `・連勤: ${generateRules.allowFourConsecutive ? '4連勤まで許可' : '3連勤の翌日は必ず公休'}`,
+            '・最終調整: 人数が少ない日を再配分して下振れを抑制し、土日祝の勤務/休み回数差もできるだけ均等化'
         ];
 
         ruleLogicSummary.innerHTML = lines.map(line => `<div>${escapeHtml(line)}</div>`).join('');
@@ -756,6 +757,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function getPublicHolidayCount(staff) {
         return Object.values(staff.schedule).filter(v => v === '公').length;
+    }
+
+    function getMaxConsecutiveWorkDays() {
+        return generateRules.allowFourConsecutive ? 4 : DEFAULT_MAX_CONSECUTIVE_WORK_DAYS;
     }
 
     function canPlacePublicWithoutOver3(selectedSet, idx, total) {
@@ -923,6 +928,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function enforceRestAfterThreeConsecutiveWorkdays(staffStats, dates) {
+        if (generateRules.allowFourConsecutive) return;
         const dateKeys = dates.map(d => formatDateForData(d));
 
         staffStats.forEach(staff => {
@@ -992,11 +998,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (currentVal !== '') return;
                 if (!canAssignWorkOnDate(s, dateKeys, idx)) return;
 
-                // 「未割当は⑥で埋める」がONなら、空欄補完は⑥固定にする。
                 let nextVal = '';
-                if (generateRules.fillOffAsKoukyu && use6) {
-                    nextVal = '6';
-                } else if (use10 && use6) {
+                if (use10 && use6) {
                     nextVal = s.count10 <= s.count6 ? '10' : '6';
                 } else if (use10) {
                     nextVal = '10';
@@ -1699,20 +1702,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     s.schedule[dateStr] = '';
                     return;
                 }
-                if (generateRules.fillOffAsKoukyu) {
-                    if (timeSettings["6"] && timeSettings["6"].enabled && canAssignWorkOnDate(s, dateKeys, dateIdx)) {
-                        s.schedule[dateStr] = '6';
-                        s.count6++;
-                        if (isSpecialTargetDay) {
-                            s.countWeekend++;
-                            s.countHolidayWork++;
-                        }
-                    } else {
-                        s.schedule[dateStr] = '';
-                    }
-                } else {
-                    s.schedule[dateStr] = '';
-                }
+                s.schedule[dateStr] = '';
             });
 
         });
@@ -1927,7 +1917,7 @@ document.addEventListener('DOMContentLoaded', () => {
             streak++;
         }
 
-        return streak <= MAX_CONSECUTIVE_WORK_DAYS;
+        return streak <= getMaxConsecutiveWorkDays();
     }
 
     function getDailyWorkCounts(dates, staffStats) {
