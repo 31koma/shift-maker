@@ -21,6 +21,9 @@
     --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
     --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
     --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+    --ui-ease: cubic-bezier(0.22, 1, 0.36, 1);
+    --ui-fast: 0.14s;
+    --ui-medium: 0.22s;
 }
 
 * {
@@ -281,7 +284,7 @@ body {
     z-index: 50;
     opacity: 0;
     pointer-events: none;
-    transition: opacity 0.3s;
+    transition: opacity var(--ui-medium) ease;
     padding: 1rem;
 }
 
@@ -298,9 +301,10 @@ body {
     box-shadow: var(--shadow-lg);
     display: flex;
     flex-direction: column;
-    transform: scale(0.95) translateY(10px);
+    transform: scale(0.96) translateY(12px);
     opacity: 0;
-    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    transform-origin: center center;
+    transition: transform var(--ui-medium) var(--ui-ease), opacity var(--ui-medium) ease;
 }
 
 .modal-content.show {
@@ -329,11 +333,12 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: color 0.2s;
+    transition: color var(--ui-fast) ease, transform var(--ui-fast) ease;
 }
 
 .close-btn:hover {
     color: var(--danger-color);
+    transform: scale(1.04);
 }
 
 .modal-body {
@@ -456,16 +461,21 @@ body {
     font-size: 0.875rem;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: transform var(--ui-fast) var(--ui-ease), box-shadow var(--ui-fast) ease, background-color var(--ui-fast) ease;
     display: flex;
     align-items: center;
     justify-content: center;
+    will-change: transform;
 }
 
 .primary-btn:hover {
     background: var(--primary-hover);
-    transform: translateY(-1px);
+    transform: translateY(-2px);
     box-shadow: 0 4px 6px -1px var(--primary-light);
+}
+
+.primary-btn:active {
+    transform: translateY(0) scale(0.97);
 }
 
 .danger-btn {
@@ -477,12 +487,18 @@ body {
     font-size: 0.875rem;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: transform var(--ui-fast) var(--ui-ease), background-color var(--ui-fast) ease, border-color var(--ui-fast) ease;
+    will-change: transform;
 }
 
 .danger-btn:hover {
     background: #fef2f2;
     border-color: #fecaca;
+    transform: translateY(-2px);
+}
+
+.danger-btn:active {
+    transform: translateY(0) scale(0.97);
 }
 
 /* Toast */
@@ -787,13 +803,19 @@ body {
     font-size: 0.875rem;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: transform var(--ui-fast) var(--ui-ease), box-shadow var(--ui-fast) ease, background-color var(--ui-fast) ease, border-color var(--ui-fast) ease;
     box-shadow: var(--shadow-sm);
+    will-change: transform;
 }
 
 .secondary-btn:hover {
     background: var(--bg-color);
     border-color: var(--text-muted);
+    transform: translateY(-2px);
+}
+
+.secondary-btn:active {
+    transform: translateY(0) scale(0.97);
 }
 
 .staff-lists {
@@ -1281,7 +1303,8 @@ body {
     position: absolute;
     right: calc(100% + 8px);
     top: 50%;
-    transform: translateY(-50%);
+    transform: translateY(-50%) scale(0.94);
+    transform-origin: right center;
     min-width: 110px;
     padding: 0.5rem 0.6rem;
     border-radius: 0.6rem;
@@ -1294,7 +1317,7 @@ body {
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
-    transition: opacity 0.15s ease;
+    transition: opacity var(--ui-fast) ease, transform var(--ui-fast) var(--ui-ease), visibility 0s linear var(--ui-fast);
     z-index: 30;
     white-space: nowrap;
 }
@@ -1302,6 +1325,8 @@ body {
 .shift-table .staff-summary-cell:hover .staff-summary-tooltip {
     opacity: 1;
     visibility: visible;
+    transform: translateY(-50%) scale(1);
+    transition: opacity var(--ui-fast) ease, transform var(--ui-fast) var(--ui-ease), visibility 0s linear 0s;
 }
 
 .shift-table td.cell.c-1 {
@@ -1403,6 +1428,32 @@ body {
 }
 
 /* Print Styles */
+@media (prefers-reduced-motion: reduce) {
+    .primary-btn,
+    .secondary-btn,
+    .danger-btn,
+    .close-btn,
+    .modal-overlay,
+    .modal-content,
+    .shift-table .staff-summary-tooltip {
+        transition: none !important;
+        animation: none !important;
+    }
+
+    .primary-btn:hover,
+    .primary-btn:active,
+    .secondary-btn:hover,
+    .secondary-btn:active,
+    .danger-btn:hover,
+    .danger-btn:active,
+    .close-btn:hover,
+    .shift-table .staff-summary-cell:hover .staff-summary-tooltip,
+    .modal-content,
+    .modal-content.show {
+        transform: none !important;
+    }
+}
+
 @media print {
     body {
         background: white !important;
