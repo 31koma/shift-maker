@@ -8,7 +8,6 @@ document.addEventListener('DOMContentLoaded', () => {
             { name: "八田", checked: true, pubHolidays: 8, canWorkOneShift: true },
             { name: "石川", checked: true, pubHolidays: 8, canWorkOneShift: true },
             { name: "岩田泰", checked: true, pubHolidays: 8, canWorkOneShift: true },
-            { name: "岩田美", checked: true, pubHolidays: 8, canWorkOneShift: true },
             { name: "岸本", checked: true, pubHolidays: 8, canWorkOneShift: true },
             { name: "中川", checked: true, pubHolidays: 8, canWorkOneShift: true },
             { name: "清水", checked: true, pubHolidays: 8, canWorkOneShift: true },
@@ -20,7 +19,8 @@ document.addEventListener('DOMContentLoaded', () => {
             { name: "岡本梨", checked: true, pubHolidays: 8, canWorkOneShift: false },
             { name: "岡崎", checked: true, pubHolidays: 8, canWorkOneShift: false },
             { name: "澤田", checked: true, pubHolidays: 8, canWorkOneShift: false },
-            { name: "大野", checked: true, pubHolidays: 8, canWorkOneShift: false }
+            { name: "大野", checked: true, pubHolidays: 8, canWorkOneShift: false },
+            { name: "岩田美", checked: true, pubHolidays: 8, canWorkOneShift: false }
         ],
         irregular: [
             { name: "太田", checked: true, pubHolidays: 8, canWorkOneShift: false },
@@ -57,6 +57,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     staffData.irregular.push(staffObj);
                     migrated = true;
                 }
+            }
+        });
+        const demoteToParttime = ["岩田美"];
+        demoteToParttime.forEach(name => {
+            const ftIdx = staffData.fulltime.findIndex(f => f.name === name);
+            if (ftIdx > -1) {
+                const staffObj = staffData.fulltime.splice(ftIdx, 1)[0];
+                staffObj.canWorkOneShift = false;
+                if (!staffData.parttime.some(p => p.name === name)) {
+                    staffData.parttime.push(staffObj);
+                }
+                migrated = true;
             }
         });
 

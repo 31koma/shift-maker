@@ -30,6 +30,18 @@ document.addEventListener('DOMContentLoaded', () => {
         ];
     }
 
+    function isManualOnlyIrregularStaff(staffName) {
+        return staffName === '中西';
+    }
+
+    function getCellClass(value) {
+        if (value === '休') return 'active-rest';
+        if (value === '有' || value === '有休' || value === '特' || value === '特休') return 'active-paid-leave';
+        if (value === '10') return 'active-10';
+        if (value === '出') return 'active-work';
+        return '';
+    }
+
     // --- DOM Elements ---
     const currentMonthDisplay = document.getElementById('current-month-display');
     const periodDisplay = document.getElementById('period-display');
@@ -95,10 +107,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 tbody += `<tr><td class="sticky-col">${staffName}</td>`;
                 datesArray.forEach(dateStr => {
                     const cellVal = (requestData[dateStr] && requestData[dateStr][staffName]) || '';
-                    let extraClass = '';
-                    if (cellVal === '休') extraClass = 'active-rest';
-                    if (cellVal === '有' || cellVal === '有休' || cellVal === '特' || cellVal === '特休') extraClass = 'active-paid-leave';
-                    if (cellVal === '10') extraClass = 'active-10';
+                    const extraClass = getCellClass(cellVal);
 
                     tbody += `<td class="cell ${extraClass}" data-date="${dateStr}" data-name="${staffName}">${cellVal}</td>`;
                 });
@@ -125,12 +134,17 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         let currentVal = requestData[dateStr][staffName] || '';
-        // Toggle: "" -> "休" -> "有" -> "特" -> "10" -> ""
-        if (currentVal === '') currentVal = '休';
-        else if (currentVal === '休') currentVal = '有';
-        else if (currentVal === '有' || currentVal === '有休') currentVal = '特';
-        else if (currentVal === '特' || currentVal === '特休') currentVal = '10';
-        else currentVal = '';
+        if (isManualOnlyIrregularStaff(staffName)) {
+            // 中西は通常の休み希望ではなく、手動指定日のみ出勤にする。
+            currentVal = currentVal === '出' ? '' : '出';
+        } else {
+            // Toggle: "" -> "休" -> "有" -> "特" -> "10" -> ""
+            if (currentVal === '') currentVal = '休';
+            else if (currentVal === '休') currentVal = '有';
+            else if (currentVal === '有' || currentVal === '有休') currentVal = '特';
+            else if (currentVal === '特' || currentVal === '特休') currentVal = '10';
+            else currentVal = '';
+        }
 
         if (currentVal === '') {
             delete requestData[dateStr][staffName];
@@ -147,9 +161,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // Update UI locally without full re-render for performance
         td.textContent = currentVal;
         td.className = 'cell'; // reset
-        if (currentVal === '休') td.classList.add('active-rest');
-        if (currentVal === '有' || currentVal === '有休' || currentVal === '特' || currentVal === '特休') td.classList.add('active-paid-leave');
-        if (currentVal === '10') td.classList.add('active-10');
+        const extraClass = getCellClass(currentVal);
+        if (extraClass) td.classList.add(extraClass);
     }
 
     function bindEvents() {

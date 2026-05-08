@@ -119,6 +119,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
             });
+            const demoteToParttime = ["岩田美"];
+            demoteToParttime.forEach(name => {
+                const ftIdx = normalized.fulltime.findIndex(f => f.name === name);
+                if (ftIdx > -1) {
+                    const staffObj = normalized.fulltime.splice(ftIdx, 1)[0];
+                    staffObj.canWorkOneShift = false;
+                    if (!normalized.parttime.some(p => p.name === name)) {
+                        normalized.parttime.push(staffObj);
+                    }
+                    migrated = true;
+                }
+            });
 
             if (migrated) {
                 shouldSave = true;
@@ -164,6 +176,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 pubHolidays: Math.max(0, Math.min(MAX_PUBLIC_HOLIDAYS, parseInt(s.pubHolidays, 10) || 8))
             }))
         ];
+    }
+
+    function isManualOnlyWorkRequest(req) {
+        return req === '出' || isWorkValue(req);
+    }
+
+    function getManualOnlyWorkValue() {
+        if (timeSettings["6"] && timeSettings["6"].enabled) return '6';
+        const enabledType = SHIFT_TYPES.find(type => timeSettings[type] && timeSettings[type].enabled);
+        return enabledType || '6';
     }
 
     function refreshStaffData() {
@@ -1026,6 +1048,7 @@ document.addEventListener('DOMContentLoaded', () => {
         dateKeys.forEach(dateStr => {
             let c = 0;
             staffStats.forEach(s => {
+                if (s.manualOnly) return;
                 const v = s.schedule[dateStr] || '';
                 if (isWorkValue(v)) c++;
             });
@@ -1102,6 +1125,7 @@ document.addEventListener('DOMContentLoaded', () => {
         function getDailyCount(dateStr) {
             let count = 0;
             staffStats.forEach(s => {
+                if (s.manualOnly) return;
                 const v = s.schedule[dateStr] || '';
                 if (isWorkValue(v)) count++;
             });
@@ -1506,7 +1530,20 @@ document.addEventListener('DOMContentLoaded', () => {
             let available = [];
             staffStats.forEach(s => {
                 if (s.manualOnly) {
-                    s.schedule[dateStr] = '';
+                    const req = (requestData[dateStr] && requestData[dateStr][s.name]) || '';
+                    if (isManualOnlyWorkRequest(req)) {
+                        const workValue = getManualOnlyWorkValue();
+                        s.schedule[dateStr] = workValue;
+                        if (workValue === '1') s.count1++;
+                        if (workValue === '6') s.count6++;
+                        if (workValue === '10') s.count10++;
+                        if (isSpecialTargetDay) {
+                            s.countWeekend++;
+                            s.countHolidayWork++;
+                        }
+                    } else {
+                        s.schedule[dateStr] = '';
+                    }
                     return;
                 }
                 const req = (requestData[dateStr] && requestData[dateStr][s.name]) || '';
@@ -1661,6 +1698,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
 
                 const alreadyAssignedWork = staffStats.reduce((acc, s) => {
+                    if (s.manualOnly) return acc;
                     const val = s.schedule[dateStr] || '';
                     return acc + (isWorkValue(val) ? 1 : 0);
                 }, 0);

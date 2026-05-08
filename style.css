@@ -1083,6 +1083,12 @@ body {
     font-weight: 700;
 }
 
+.request-table td.cell.active-work {
+    background: #EFF6FF;
+    color: #2563EB;
+    font-weight: 700;
+}
+
 .request-table .day-sun {
     color: var(--color-sunday);
 }
