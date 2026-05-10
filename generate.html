@@ -58,11 +58,21 @@
             <div class="glass-panel hide-on-print"
                 style="padding: 1.5rem; margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
                 <p>ルールに基づき自動でシフトを生成します。</p>
-                <div style="display: flex; gap: 1rem;">
+                <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
                     <button id="generate-btn" class="primary-btn">自動生成する</button>
+                    <div class="summary-hover-control" id="summary-hover-control">
+                        <button type="button" id="summary-hover-btn" class="secondary-btn">総合早見表</button>
+                        <div class="summary-hover-panel" id="summary-hover-panel">
+                            <h2>総合早見表</h2>
+                            <div id="summary-table-container">
+                                <div class="summary-empty">自動生成後に表示されます。</div>
+                            </div>
+                        </div>
+                    </div>
                     <button id="saveBtn" type="button" class="secondary-btn">結果を保存</button>
                     <button id="openSavedResultsBtn" type="button" class="secondary-btn">保存結果を開く</button>
-                    <button id="pdf-btn" class="secondary-btn">PDF出力 (印刷)</button>
+                    <button id="pdf-btn" class="secondary-btn">勤務表だけ印刷</button>
+                    <button id="summary-print-btn" class="secondary-btn">総合数見比べ表だけ印刷</button>
                     <button id="time-settings-btn" class="secondary-btn">時間設定</button>
                     <button id="rule-settings-btn" class="secondary-btn">ルール設定</button>
                 </div>
@@ -141,6 +151,9 @@
                         </div>
                         <div class="time-setting">
                             <label><input id="rule-allow-4-consecutive" type="checkbox"> 4連勤あり</label>
+                        </div>
+                        <div class="time-setting">
+                            <label><input id="rule-fill-blank-with-six" type="checkbox"> 生成完了後、空欄を6で埋める（後処理）</label>
                         </div>
                         <div class="time-setting">
                             <div style="font-size:0.85rem; color:var(--text-muted);">公休は3連休を避ける方向で自動補正します</div>
@@ -256,6 +269,13 @@
                     <!-- JSで生成 -->
                 </table>
             </div>
+
+            <div id="summary-print-area" class="summary-print-area print-only">
+                <h2>総合数見比べ表</h2>
+                <div id="summary-print-table-container">
+                    <!-- JSで生成 -->
+                </div>
+            </div>
         </main>
     </div>
 
@@ -269,7 +289,7 @@
         <span id="toast-message">生成しました</span>
     </div>
 
-    <script src="generate.js?v=20260327a"></script>
+    <script src="generate.js?v=20260510a"></script>
 </body>
 
 </html>

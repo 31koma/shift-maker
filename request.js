@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let requestData = JSON.parse(localStorage.getItem('shiftApp_requestData')) || {};
     let staffData = JSON.parse(localStorage.getItem('shiftApp_staffData'));
+    const FULLTIME_CORE_NAMES = new Set(["梶本", "田渕", "田淵", "北窪", "八田"]);
 
     // fallback if no staff logic is set yet
     if (!staffData || !staffData.fulltime) {
@@ -23,20 +24,24 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function getActiveStaff() {
+        const fulltime = [...staffData.fulltime].sort((a, b) => {
+            const aCore = !!a.isFulltimeCore || FULLTIME_CORE_NAMES.has(a.name);
+            const bCore = !!b.isFulltimeCore || FULLTIME_CORE_NAMES.has(b.name);
+            return Number(bCore) - Number(aCore);
+        });
         return [
-            ...staffData.fulltime.filter(s => s.checked).map(s => s.name),
+            ...fulltime.filter(s => s.checked).map(s => s.name),
             ...staffData.parttime.filter(s => s.checked).map(s => s.name),
             ...staffData.irregular.filter(s => s.checked).map(s => s.name)
         ];
     }
 
-    function isManualOnlyIrregularStaff(staffName) {
-        return staffName === '中西';
-    }
-
     function getCellClass(value) {
         if (value === '休') return 'active-rest';
+        if (value === '公') return 'active-public';
         if (value === '有' || value === '有休' || value === '特' || value === '特休') return 'active-paid-leave';
+        if (value === '1') return 'active-1';
+        if (value === '6') return 'active-6';
         if (value === '10') return 'active-10';
         if (value === '出') return 'active-work';
         return '';
@@ -109,7 +114,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const cellVal = (requestData[dateStr] && requestData[dateStr][staffName]) || '';
                     const extraClass = getCellClass(cellVal);
 
-                    tbody += `<td class="cell ${extraClass}" data-date="${dateStr}" data-name="${staffName}">${cellVal}</td>`;
+                    tbody += `<td class="cell ${extraClass}" data-date="${dateStr}" data-name="${staffName}"><span class="cell-value">${cellVal}</span></td>`;
                 });
                 tbody += `</tr>`;
             });
@@ -134,17 +139,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         let currentVal = requestData[dateStr][staffName] || '';
-        if (isManualOnlyIrregularStaff(staffName)) {
-            // 中西は通常の休み希望ではなく、手動指定日のみ出勤にする。
-            currentVal = currentVal === '出' ? '' : '出';
-        } else {
-            // Toggle: "" -> "休" -> "有" -> "特" -> "10" -> ""
-            if (currentVal === '') currentVal = '休';
-            else if (currentVal === '休') currentVal = '有';
-            else if (currentVal === '有' || currentVal === '有休') currentVal = '特';
-            else if (currentVal === '特' || currentVal === '特休') currentVal = '10';
-            else currentVal = '';
-        }
+        // Toggle: "" -> "休" -> "有" -> "特" -> "10" -> "1" -> "公" -> "6" -> ""
+        if (currentVal === '') currentVal = '休';
+        else if (currentVal === '休') currentVal = '有';
+        else if (currentVal === '有' || currentVal === '有休') currentVal = '特';
+        else if (currentVal === '特' || currentVal === '特休') currentVal = '10';
+        else if (currentVal === '10') currentVal = '1';
+        else if (currentVal === '1') currentVal = '公';
+        else if (currentVal === '公') currentVal = '6';
+        else currentVal = '';
 
         if (currentVal === '') {
             delete requestData[dateStr][staffName];
@@ -159,7 +162,12 @@ document.addEventListener('DOMContentLoaded', () => {
         saveData();
 
         // Update UI locally without full re-render for performance
-        td.textContent = currentVal;
+        const valueEl = td.querySelector('.cell-value');
+        if (valueEl) {
+            valueEl.textContent = currentVal;
+        } else {
+            td.textContent = currentVal;
+        }
         td.className = 'cell'; // reset
         const extraClass = getCellClass(currentVal);
         if (extraClass) td.classList.add(extraClass);
@@ -184,7 +192,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function saveData() {
         localStorage.setItem('shiftApp_requestData', JSON.stringify(requestData));
-        showToast('保存しました');
     }
 
     function showToast(message) {

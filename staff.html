@@ -41,6 +41,7 @@
                     <input type="text" id="new-staff-name" class="premium-input" placeholder="追加するお名前"
                         style="max-width: 200px;" required>
                     <select id="new-staff-type" class="premium-input" style="max-width: 150px; cursor: pointer;">
+                        <option value="fulltimeCore">正社員常勤</option>
                         <option value="fulltime">正社員</option>
                         <option value="parttime">パート</option>
                         <option value="irregular">イレギュラー</option>
@@ -55,6 +56,13 @@
             </div>
 
             <div class="staff-lists">
+                <div class="staff-section glass-panel">
+                    <h2>正社員常勤</h2>
+                    <div class="staff-grid" id="fulltime-core-list">
+                        <!-- JSで生成 -->
+                    </div>
+                </div>
+
                 <div class="staff-section glass-panel">
                     <h2>正社員</h2>
                     <div class="staff-grid" id="fulltime-list">
@@ -89,7 +97,7 @@
         <span id="toast-message">保存しました</span>
     </div>
 
-    <script src="staff.js"></script>
+    <script src="staff.js?v=20260509l"></script>
 </body>
 
 </html>

@@ -1,11 +1,12 @@
 document.addEventListener('DOMContentLoaded', () => {
     const MAX_PUBLIC_HOLIDAYS = 8;
+    const FULLTIME_CORE_NAMES = new Set(["梶本", "田渕", "田淵", "北窪", "八田"]);
     const defaultStaff = {
         fulltime: [
-            { name: "梶本", checked: true, pubHolidays: 8, canWorkOneShift: true },
-            { name: "田渕", checked: true, pubHolidays: 8, canWorkOneShift: true },
-            { name: "北窪", checked: true, pubHolidays: 7, canWorkOneShift: true },
-            { name: "八田", checked: true, pubHolidays: 8, canWorkOneShift: true },
+            { name: "梶本", checked: true, pubHolidays: 8, canWorkOneShift: true, isFulltimeCore: true },
+            { name: "田渕", checked: true, pubHolidays: 8, canWorkOneShift: true, isFulltimeCore: true },
+            { name: "北窪", checked: true, pubHolidays: 7, canWorkOneShift: true, isFulltimeCore: true },
+            { name: "八田", checked: true, pubHolidays: 8, canWorkOneShift: true, isFulltimeCore: true },
             { name: "石川", checked: true, pubHolidays: 8, canWorkOneShift: true },
             { name: "岩田泰", checked: true, pubHolidays: 8, canWorkOneShift: true },
             { name: "岸本", checked: true, pubHolidays: 8, canWorkOneShift: true },
@@ -15,12 +16,12 @@ document.addEventListener('DOMContentLoaded', () => {
         ],
         parttime: [
             { name: "竹田", checked: true, pubHolidays: 8, canWorkOneShift: false },
+            { name: "岩田美", checked: true, pubHolidays: 8, canWorkOneShift: false },
             { name: "岡本春", checked: true, pubHolidays: 8, canWorkOneShift: false },
             { name: "岡本梨", checked: true, pubHolidays: 8, canWorkOneShift: false },
             { name: "岡崎", checked: true, pubHolidays: 8, canWorkOneShift: false },
             { name: "澤田", checked: true, pubHolidays: 8, canWorkOneShift: false },
-            { name: "大野", checked: true, pubHolidays: 8, canWorkOneShift: false },
-            { name: "岩田美", checked: true, pubHolidays: 8, canWorkOneShift: false }
+            { name: "大野", checked: true, pubHolidays: 8, canWorkOneShift: false }
         ],
         irregular: [
             { name: "太田", checked: true, pubHolidays: 8, canWorkOneShift: false },
@@ -28,9 +29,41 @@ document.addEventListener('DOMContentLoaded', () => {
         ]
     };
 
+    function moveStaffAfter(list, staffName, previousName) {
+        const staffIdx = list.findIndex(s => s.name === staffName);
+        const previousIdx = list.findIndex(s => s.name === previousName);
+        if (staffIdx === -1 || previousIdx === -1 || staffIdx === previousIdx + 1) return false;
+
+        const [staff] = list.splice(staffIdx, 1);
+        const updatedPreviousIdx = list.findIndex(s => s.name === previousName);
+        list.splice(updatedPreviousIdx + 1, 0, staff);
+        return true;
+    }
+
+    function isFulltimeCoreStaff(staff) {
+        return !!staff.isFulltimeCore || FULLTIME_CORE_NAMES.has(staff.name);
+    }
+
+    function normalizeFulltimeCoreFlags() {
+        let changed = false;
+        staffData.fulltime.forEach(staff => {
+            const shouldBeCore = FULLTIME_CORE_NAMES.has(staff.name) || !!staff.isFulltimeCore;
+            if (!!staff.isFulltimeCore !== shouldBeCore) {
+                staff.isFulltimeCore = shouldBeCore;
+                changed = true;
+            }
+        });
+        staffData.fulltime.sort((a, b) => {
+            const coreCompare = Number(isFulltimeCoreStaff(b)) - Number(isFulltimeCoreStaff(a));
+            return coreCompare;
+        });
+        return changed;
+    }
+
     let staffData = JSON.parse(localStorage.getItem('shiftApp_staffData'));
     if (!staffData || !staffData.fulltime || !staffData.parttime) {
         staffData = defaultStaff;
+        normalizeFulltimeCoreFlags();
     } else {
         if (!staffData.irregular) {
             staffData.irregular = [];
@@ -71,6 +104,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 migrated = true;
             }
         });
+        if (moveStaffAfter(staffData.parttime, "岩田美", "竹田")) {
+            migrated = true;
+        }
+        if (normalizeFulltimeCoreFlags()) {
+            migrated = true;
+        }
 
         // データ統合（既存データにpubHolidaysがない場合はデフォルト8を設定）
         let normalizedChanged = false;
@@ -99,18 +138,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 
+    const ftCoreList = document.getElementById('fulltime-core-list');
     const ftList = document.getElementById('fulltime-list');
     const ptList = document.getElementById('parttime-list');
     const irList = document.getElementById('irregular-list');
     const toast = document.getElementById('toast');
 
     function renderStaff() {
-        renderGroup(ftList, staffData.fulltime, 'fulltime');
+        renderGroup(ftCoreList, staffData.fulltime.filter(isFulltimeCoreStaff), 'fulltimeCore', staffData.fulltime);
+        renderGroup(ftList, staffData.fulltime.filter(s => !isFulltimeCoreStaff(s)), 'fulltime', staffData.fulltime);
         renderGroup(ptList, staffData.parttime, 'parttime');
         renderGroup(irList, staffData.irregular, 'irregular');
     }
 
-    function renderGroup(container, list, groupName) {
+    function renderGroup(container, list, groupName, sourceList = list) {
         container.innerHTML = '';
         list.forEach((staff, index) => {
             const wrapper = document.createElement('div');
@@ -203,7 +244,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 e.preventDefault();
                 e.stopPropagation();
                 if (confirm(`「${staff.name}」さんを削除してよろしいですか？`)) {
-                    list.splice(index, 1);
+                    const sourceIndex = sourceList.indexOf(staff);
+                    if (sourceIndex > -1) sourceList.splice(sourceIndex, 1);
                     renderStaff();
                     saveData();
                 }
@@ -222,7 +264,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function saveData() {
         localStorage.setItem('shiftApp_staffData', JSON.stringify(staffData));
-        showToast('保存しました');
     }
 
     function showToast(message) {
@@ -261,6 +302,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const name = nameInput.value.trim();
             const type = typeInput.value;
+            const targetType = type === 'fulltimeCore' ? 'fulltime' : type;
 
             if (!name) return;
 
@@ -272,12 +314,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            staffData[type].push({
+            staffData[targetType].push({
                 name,
                 checked: true,
                 pubHolidays: MAX_PUBLIC_HOLIDAYS,
-                canWorkOneShift: type === 'fulltime'
+                canWorkOneShift: targetType === 'fulltime',
+                isFulltimeCore: type === 'fulltimeCore'
             });
+            normalizeFulltimeCoreFlags();
 
             nameInput.value = '';
             renderStaff();
