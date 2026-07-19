@@ -1907,3 +1907,28 @@ body {
         margin: 0.9cm;
     }
 }
+
+/* ===== フッター(お問い合わせ) ===== */
+.app-footer {
+    text-align: center;
+    padding: 16px 12px 20px;
+    font-size: 0.8rem;
+    color: rgba(15, 23, 42, 0.55);
+    letter-spacing: 0.03em;
+}
+
+.footer-mail {
+    color: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.footer-mail:hover {
+    color: rgba(15, 23, 42, 0.9);
+}
+
+@media print {
+    .app-footer {
+        display: none !important;
+    }
+}
