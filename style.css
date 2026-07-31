@@ -839,7 +839,7 @@ body {
 
 .staff-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(268px, 1fr));
     gap: 1rem;
 }
 
@@ -885,9 +885,12 @@ body {
 .staff-settings-row {
     grid-column: 1 / 2;
     display: grid;
-    grid-template-columns: repeat(2, minmax(120px, 160px));
-    gap: 0.75rem;
-    margin-left: 2rem;
+    /* ①に参加 / 公休 / 誕生日 の3列。
+       カード幅に収まるよう minmax(0, 1fr) で縮めて、はみ出さないようにする。 */
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.5rem;
+    margin-left: 1.6rem;
+    min-width: 0;
 }
 
 .staff-name {
@@ -947,10 +950,24 @@ body {
 }
 
 .staff-ph-input {
-    width: 64px;
+    width: 100%;
+    max-width: 60px;
     padding: 0.1rem 0.25rem;
     font-size: 0.75rem;
     text-align: center;
+}
+
+.staff-birthday-input {
+    width: 100%;
+    max-width: 64px;
+    padding: 0.1rem 0.25rem;
+    font-size: 0.75rem;
+    text-align: center;
+}
+
+.staff-birthday-input::placeholder {
+    color: var(--text-muted);
+    opacity: 0.6;
 }
 
 .del-staff-btn {
@@ -1904,7 +1921,9 @@ body {
        休みも数字も対象。自動生成でついた分は白黒のまま。
        他の色指定を確実に上回るよう、この定義を最後に置いている。 */
     .shift-table td.cell.c-designated,
-    .shift-table td.cell.c-designated .cell-value {
+    .shift-table td.cell.c-designated .cell-value,
+    .shift-table td.cell.c-birthday,
+    .shift-table td.cell.c-birthday .cell-value {
         color: #d40000 !important;
         font-weight: 800 !important;
         background: #fff !important;
@@ -1931,6 +1950,27 @@ body {
     font-size: 0.8rem;
     color: rgba(15, 23, 42, 0.55);
     letter-spacing: 0.03em;
+}
+
+/* 誕生日休。公休の一種だが、ひと目で分かるようにする */
+.c-birthday {
+    background: #fee2e2 !important;
+    color: #b91c1c !important;
+    font-weight: 700;
+}
+
+/* バージョンと更新日。お客さんが更新の到着を確認できるようにする */
+.app-version {
+    display: block;
+    margin-top: 0.35rem;
+    font-size: 0.72rem;
+    color: rgba(15, 23, 42, 0.4);
+}
+
+@media print {
+    .app-footer {
+        display: none;
+    }
 }
 
 .footer-mail {

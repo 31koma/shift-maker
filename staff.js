@@ -2,31 +2,73 @@ document.addEventListener('DOMContentLoaded', () => {
     // 共通設定（config.js）から読む。取得できない場合だけ従来値を使う。
     const MAX_PUBLIC_HOLIDAYS = (window.SHIFT_CONFIG && window.SHIFT_CONFIG.MAX_PUBLIC_HOLIDAYS) || 8;
     const FULLTIME_CORE_NAMES = new Set(["梶本", "田渕", "田淵", "北窪", "八田"]);
+    const SEED_BIRTHDAYS = (window.SHIFT_CONFIG && window.SHIFT_CONFIG.STAFF_BIRTHDAYS) || {};
+
+    // 誕生日は年を持たない "MM-DD" で保存する。
+    // 入力欄には「5/24」のように打てるようにして、保存時にここで整える。
+    // 受け付ける形: 5/24, 05/24, 5-24, 05-24, 0524, 524, 5月24日
+    function normalizeBirthday(raw) {
+        if (raw === undefined || raw === null) return '';
+        const text = String(raw).trim();
+        if (!text) return '';
+
+        let month = null;
+        let day = null;
+
+        const separated = text.match(/^(\d{1,2})\s*[\/\-.月]\s*(\d{1,2})\s*日?$/);
+        if (separated) {
+            month = parseInt(separated[1], 10);
+            day = parseInt(separated[2], 10);
+        } else if (/^\d{4}$/.test(text)) {
+            month = parseInt(text.slice(0, 2), 10);
+            day = parseInt(text.slice(2), 10);
+        } else if (/^\d{3}$/.test(text)) {
+            month = parseInt(text.slice(0, 1), 10);
+            day = parseInt(text.slice(1), 10);
+        } else {
+            return '';
+        }
+
+        if (!(month >= 1 && month <= 12)) return '';
+        // 2/29 を許すため、うるう年のある2月は29日まで受け付ける
+        const maxDay = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+        if (!(day >= 1 && day <= maxDay)) return '';
+
+        return `${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
+
+    // "05-24" → "5/24"（入力欄に出す用）
+    function formatBirthdayForInput(value) {
+        const normalized = normalizeBirthday(value);
+        if (!normalized) return '';
+        return `${parseInt(normalized.slice(0, 2), 10)}/${parseInt(normalized.slice(3), 10)}`;
+    }
+    // 新規インストール時の初期値。既存の localStorage があるときは使われない。
+    // 岡本春さん・澤田さんは 2026-07 時点で退職済みのため入れていない。
     const defaultStaff = {
         fulltime: [
-            { name: "梶本", checked: true, pubHolidays: 8, canWorkOneShift: true, isFulltimeCore: true },
-            { name: "田渕", checked: true, pubHolidays: 8, canWorkOneShift: true, isFulltimeCore: true },
-            { name: "北窪", checked: true, pubHolidays: 7, canWorkOneShift: true, isFulltimeCore: true },
-            { name: "八田", checked: true, pubHolidays: 8, canWorkOneShift: true, isFulltimeCore: true },
-            { name: "石川", checked: true, pubHolidays: 8, canWorkOneShift: true },
-            { name: "岩田泰", checked: true, pubHolidays: 8, canWorkOneShift: true },
-            { name: "岸本", checked: true, pubHolidays: 8, canWorkOneShift: true },
-            { name: "中川", checked: true, pubHolidays: 8, canWorkOneShift: true },
-            { name: "清水", checked: true, pubHolidays: 8, canWorkOneShift: true },
-            { name: "柿林", checked: true, pubHolidays: 8, canWorkOneShift: true }
+            { name: "梶本", checked: true, pubHolidays: 8, canWorkOneShift: true, isFulltimeCore: true, birthday: "05-24" },
+            { name: "田渕", checked: true, pubHolidays: 8, canWorkOneShift: true, isFulltimeCore: true, birthday: "12-14" },
+            { name: "北窪", checked: true, pubHolidays: 7, canWorkOneShift: true, isFulltimeCore: true, birthday: "03-22" },
+            { name: "八田", checked: true, pubHolidays: 8, canWorkOneShift: true, isFulltimeCore: true, birthday: "09-11" },
+            { name: "石川", checked: true, pubHolidays: 8, canWorkOneShift: true, birthday: "06-10" },
+            { name: "岩田泰", checked: true, pubHolidays: 8, canWorkOneShift: true, birthday: "03-25" },
+            { name: "岸本", checked: true, pubHolidays: 8, canWorkOneShift: true, birthday: "09-05" },
+            { name: "中川", checked: true, pubHolidays: 8, canWorkOneShift: true, birthday: "11-12" },
+            { name: "清水", checked: true, pubHolidays: 8, canWorkOneShift: true, birthday: "06-10" },
+            { name: "柿林", checked: true, pubHolidays: 8, canWorkOneShift: true, birthday: "08-08" }
         ],
         parttime: [
-            { name: "竹田", checked: true, pubHolidays: 8, canWorkOneShift: false },
-            { name: "岩田美", checked: true, pubHolidays: 8, canWorkOneShift: false },
-            { name: "岡本春", checked: true, pubHolidays: 8, canWorkOneShift: false },
-            { name: "岡本梨", checked: true, pubHolidays: 8, canWorkOneShift: false },
-            { name: "岡崎", checked: true, pubHolidays: 8, canWorkOneShift: false },
-            { name: "澤田", checked: true, pubHolidays: 8, canWorkOneShift: false },
-            { name: "大野", checked: true, pubHolidays: 8, canWorkOneShift: false }
+            { name: "竹田", checked: true, pubHolidays: 8, canWorkOneShift: false, birthday: "08-12" },
+            { name: "岩田美", checked: true, pubHolidays: 8, canWorkOneShift: true, birthday: "06-28" },
+            { name: "岡本梨", checked: true, pubHolidays: 8, canWorkOneShift: true, birthday: "12-15" },
+            { name: "岡崎", checked: true, pubHolidays: 8, canWorkOneShift: false, birthday: "04-01" },
+            { name: "大野", checked: true, pubHolidays: 8, canWorkOneShift: false, birthday: "07-19" }
         ],
         irregular: [
-            { name: "太田", checked: true, pubHolidays: 8, canWorkOneShift: false },
-            { name: "中西", checked: true, pubHolidays: 8, canWorkOneShift: false }
+            { name: "太田", checked: true, pubHolidays: 8, canWorkOneShift: false, birthday: "07-29" },
+            // 中西さんは誕生日休の対象外（お客さん確認済み）
+            { name: "中西", checked: true, pubHolidays: 8, canWorkOneShift: false, birthday: "" }
         ]
     };
 
@@ -132,6 +174,29 @@ document.addEventListener('DOMContentLoaded', () => {
                 normalizedChanged = true;
             }
         });
+
+        // 誕生日の取り込み。
+        // すでに入っている人は絶対に上書きしない（お客さんが直した値を消さないため）。
+        // 未入力の人にだけ config.js の初期値を入れる。
+        all.forEach(s => {
+            const current = normalizeBirthday(s.birthday);
+            if (current) {
+                if (current !== s.birthday) {
+                    s.birthday = current;
+                    normalizedChanged = true;
+                }
+                return;
+            }
+            const seed = normalizeBirthday(SEED_BIRTHDAYS[s.name]);
+            if (seed) {
+                s.birthday = seed;
+                normalizedChanged = true;
+            } else if (s.birthday === undefined) {
+                s.birthday = '';
+                normalizedChanged = true;
+            }
+        });
+
         if (migrated || normalizedChanged) {
             localStorage.setItem('shiftApp_staffData', JSON.stringify(staffData));
         }
@@ -236,6 +301,44 @@ document.addEventListener('DOMContentLoaded', () => {
             oneCol.appendChild(oneShiftLabel);
             settingsRow.appendChild(oneCol);
 
+            // 誕生日（公休に含めて必ず休みにする日）
+            const birthdayCol = document.createElement('div');
+            birthdayCol.className = 'staff-setting-block';
+
+            const birthdayValue = document.createElement('label');
+            birthdayValue.className = 'staff-public-value';
+            birthdayValue.setAttribute('aria-label', '誕生日');
+
+            const birthdayLabel = document.createElement('span');
+            birthdayLabel.className = 'staff-setting-title';
+            birthdayLabel.textContent = '誕生日';
+
+            const birthdayInput = document.createElement('input');
+            birthdayInput.type = 'text';
+            birthdayInput.className = 'premium-input staff-birthday-input';
+            birthdayInput.placeholder = '月/日';
+            birthdayInput.title = '月/日 で入力してください（例: 5/24）。空欄なら誕生日休を作りません。';
+            birthdayInput.value = formatBirthdayForInput(staff.birthday);
+
+            birthdayInput.addEventListener('change', (e) => {
+                const raw = e.target.value.trim();
+                const normalized = normalizeBirthday(raw);
+                if (raw && !normalized) {
+                    // 読み取れなかったときは前の値に戻して知らせる
+                    e.target.value = formatBirthdayForInput(staff.birthday);
+                    showToast('誕生日は「5/24」のように 月/日 で入力してください');
+                    return;
+                }
+                staff.birthday = normalized;
+                e.target.value = formatBirthdayForInput(normalized);
+                saveData();
+            });
+
+            birthdayValue.appendChild(birthdayLabel);
+            birthdayValue.appendChild(birthdayInput);
+            birthdayCol.appendChild(birthdayValue);
+            settingsRow.appendChild(birthdayCol);
+
             const delBtn = document.createElement('button');
             delBtn.type = 'button';
             delBtn.className = 'del-staff-btn';
@@ -320,7 +423,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 checked: true,
                 pubHolidays: MAX_PUBLIC_HOLIDAYS,
                 canWorkOneShift: targetType === 'fulltime',
-                isFulltimeCore: type === 'fulltimeCore'
+                isFulltimeCore: type === 'fulltimeCore',
+                birthday: normalizeBirthday(SEED_BIRTHDAYS[name])
             });
             normalizeFulltimeCoreFlags();
 

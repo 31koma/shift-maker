@@ -296,6 +296,7 @@
 
     <footer class="app-footer">
         ご要望・お問い合わせ: <span class="footer-mail" onclick="navigator.clipboard.writeText('komatobi3@gmail.com').then(()=>{this.textContent='コピーしました!';setTimeout(()=>{this.textContent='komatobi3@gmail.com';},1500);})" title="クリックでコピー">komatobi3@gmail.com</span>
+        <span class="app-version"></span>
     </footer>
 
     <!-- トースト通知 -->
@@ -308,6 +309,7 @@
         <span id="toast-message">生成しました</span>
     </div>
 
+    <script src="engine.js?v=20260731"></script>
     <script src="generate.js?v=20260510a"></script>
 </body>
 

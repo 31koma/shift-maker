@@ -202,6 +202,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let normalized = rawStaffData;
         let shouldSave = false;
+
+        // 誕生日の取り込み。スタッフ画面を開かずシフト表から入った場合でも
+        // 誕生日休が効くように、ここでも同じ流し込みを行う。
+        // すでに入っている人は絶対に上書きしない。
+        const seedBirthdays = (data) => {
+            const seed = (window.SHIFT_CONFIG && window.SHIFT_CONFIG.STAFF_BIRTHDAYS) || {};
+            let changed = false;
+            [...(data.fulltime || []), ...(data.parttime || []), ...(data.irregular || [])].forEach(st => {
+                if (st.birthday) return;
+                const value = seed[st.name];
+                if (value) { st.birthday = value; changed = true; }
+                else if (st.birthday === undefined) { st.birthday = ''; changed = true; }
+            });
+            return changed;
+        };
+
         if (!normalized || !normalized.fulltime) {
             normalized = { fulltime: [], parttime: [], irregular: [] };
         } else {
@@ -307,6 +323,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
         }
+
+        if (seedBirthdays(normalized)) shouldSave = true;
+
 
         if (shouldSave) {
             localStorage.setItem('shiftApp_staffData', JSON.stringify(normalized));
@@ -936,7 +955,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function isOffValue(val) {
-        return val === '休' || val === '有休' || val === '有' || val === '特休' || val === '特' || val === '公';
+        return val === '休' || val === '有休' || val === '有' || val === '特休' || val === '特'
+            || val === '公' || val === '誕';
+    }
+
+    /** 誕生日休。公休の日数に含める（お客さん確認済み） */
+    function isBirthdayOffValue(val) {
+        return val === '誕';
     }
 
     function getStaffRequest(staffName, dateStr) {
@@ -956,8 +981,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function isOneShiftEligible(staff) {
+        // 2026-07-31 お客さん確認: ①は「正社員のみ」ではなく
+        // スタッフ画面の「①に参加」チェックが付いた人（岩田美さん・岡本梨さんを含む）。
+        // 以前は generateRules.oneFulltimeOnly でパートを弾いていた。
         if (!staff || !staff.canWorkOneShift) return false;
-        if (generateRules.oneFulltimeOnly && !staff.isFulltime) return false;
         return true;
     }
 
@@ -2934,6 +2961,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function describeWarning(w) {
+        // 新エンジンからの警告は、すでに日本語の文章になっている
+        if (w && w.engineMessage) return w.engineMessage;
         const who = w.staff ? `${w.staff}さん` : '';
         const when = w.date ? formatConflictDate(w.date) : '';
         switch (w.type) {
@@ -3078,6 +3107,188 @@ document.addEventListener('DOMContentLoaded', () => {
         return arr;
     }
 
+    // ===================================================================
+    //  新エンジンへの橋渡し
+    // ===================================================================
+    //  engine.js は DOM もアプリの内部構造も知らない。
+    //  ここで「アプリの世界 → エンジンの入力」「エンジンの出力 → アプリの世界」を変換する。
+    //  盤面への書き込みは必ず applyShiftValue を通す（指定を守る関所を素通りさせない）。
+
+    function useNewEngine() {
+        const conf = window.SHIFT_CONFIG || {};
+        return conf.USE_NEW_ENGINE !== false && !!(window.ShiftEngine && window.ShiftEngine.generate);
+    }
+
+    /** 手動編集を月ごとに覚えておく入れ物（再生成しても残すため） */
+    function getManualEditStoreKey(year, targetMonth) {
+        return `${year}-${String(targetMonth).padStart(2, '0')}`;
+    }
+    function loadManualEdits(year, targetMonth) {
+        try {
+            const all = JSON.parse(localStorage.getItem('shiftApp_manualEdits') || '{}');
+            return all[getManualEditStoreKey(year, targetMonth)] || {};
+        } catch (e) { return {}; }
+    }
+    function saveManualEdit(staffName, dateStr, value) {
+        try {
+            const all = JSON.parse(localStorage.getItem('shiftApp_manualEdits') || '{}');
+            const key = getManualEditStoreKey(currentYear, currentTargetMonth);
+            if (!all[key]) all[key] = {};
+            if (!all[key][staffName]) all[key][staffName] = {};
+            all[key][staffName][dateStr] = value || '';
+            localStorage.setItem('shiftApp_manualEdits', JSON.stringify(all));
+        } catch (e) { /* 保存できなくても生成は続ける */ }
+    }
+
+    function buildEngineStaff(staffStats) {
+        const conf = window.SHIFT_CONFIG || {};
+        const inSet = (list, name) => Array.isArray(list) && list.indexOf(name) > -1;
+        const staffDataAll = [
+            ...(staffData.fulltime || []), ...(staffData.parttime || []), ...(staffData.irregular || [])
+        ];
+        const findRaw = name => staffDataAll.find(x => x.name === name) || {};
+        return staffStats.map(s => ({
+            name: s.name,
+            isFulltime: !!s.isFulltime,
+            isFulltimeCore: !!s.isFulltimeCore,
+            isIrregular: !!s.isIrregular,
+            manualOnly: !!s.manualOnly,
+            canWorkOneShift: isOneShiftEligible(s),
+            canWorkTenShift: !inSet(conf.NO_TEN_SHIFT_STAFF, s.name) && !s.isIrregular,
+            canWorkThirdShift: inSet(conf.THIRD_SHIFT_STAFF, s.name),
+            usesFourthShift: inSet(conf.FOURTH_SHIFT_STAFF, s.name),
+            allowsConsecutiveTen: inSet(conf.CONSECUTIVE_TEN_ALLOWED, s.name),
+            pubHolidays: s.pubHolidays,
+            birthday: findRaw(s.name).birthday || ''
+        }));
+    }
+
+    function buildThirdShiftByDate(dateKeys) {
+        // 月行事画面で日ごとに人数を入れられるようにする準備。
+        // 今は eventData の thirdShiftCount を見るだけ（未入力なら既定値）。
+        const map = {};
+        dateKeys.forEach(dateStr => {
+            const ev = eventData[dateStr];
+            if (ev && ev.thirdShiftCount !== undefined && ev.thirdShiftCount !== null && ev.thirdShiftCount !== '') {
+                const n = parseInt(ev.thirdShiftCount, 10);
+                if (!isNaN(n)) map[dateStr] = Math.max(0, n);
+            }
+        });
+        return map;
+    }
+
+    function runNewEngine(staffStats, dates, dateKeys, dailyMinimumByDate, busyDayByDate) {
+        const conf = window.SHIFT_CONFIG || {};
+        let result;
+        try {
+            result = window.ShiftEngine.generate({
+                dates: dateKeys,
+                staff: buildEngineStaff(staffStats),
+                requests: requestData,
+                events: eventData,
+                manualLocks: loadManualEdits(currentYear, currentTargetMonth),
+                isHolidayDate: dateStr => isHolidayDateStr(dateStr),
+                rules: {
+                    weekdayMinimum: conf.WEEKDAY_MINIMUM || 11,
+                    weekendMinimum: conf.WEEKEND_MINIMUM || 10,
+                    oneShiftCount: generateRules.oneShiftCount,
+                    tenShiftCount: generateRules.tenShiftCount,
+                    minConsecutiveWork: conf.MIN_CONSECUTIVE_WORK || 2,
+                    maxConsecutiveWork: conf.MAX_CONSECUTIVE_WORK || 4,
+                    thirdShiftDefault: conf.THIRD_SHIFT_DEFAULT || 0,
+                    thirdShiftByDate: buildThirdShiftByDate(dateKeys),
+                    seed: Math.floor(Math.random() * 2147483647)
+                }
+            });
+        } catch (err) {
+            console.error('[新エンジン] 生成に失敗したため従来方式に切り替えます', err);
+            return null;
+        }
+        if (!result || !result.schedule) return null;
+
+        // 目安人数・行事日フラグ（画面の集計や表示で使う）
+        dateKeys.forEach(dateStr => {
+            const d = new Date(dateStr + 'T00:00:00');
+            const weekendish = isWeekendOrHoliday(d, dateStr);
+            dailyMinimumByDate[dateStr] = weekendish
+                ? (conf.WEEKEND_MINIMUM || 10) : (conf.WEEKDAY_MINIMUM || 11);
+            busyDayByDate[dateStr] = isBusyDay(eventData[dateStr] || {});
+        });
+
+        // エンジンの結果を盤面へ。指定セルは先にロックしてから force で書く
+        staffStats.forEach(staff => {
+            const row = result.schedule[staff.name] || {};
+            const lockRow = (result.lockInfo && result.lockInfo[staff.name]) || {};
+            dateKeys.forEach(dateStr => {
+                const value = row[dateStr] || '';
+                const d = new Date(dateStr + 'T00:00:00');
+                const isSpecialTargetDay = isWeekendOrHoliday(d, dateStr);
+                applyShiftValue(staff, dateStr, value, isSpecialTargetDay, { force: true });
+                if (lockRow[dateStr]) {
+                    lockShiftValue(staff, dateStr, value, lockRow[dateStr]);
+                    if (value === '公' || value === '誕') {
+                        staff.fixedPublicDates.add(dateStr);
+                        staff.fixedPublicHolidayDates.add(dateStr);
+                    } else if (isWorkValue(value)) {
+                        staff.fixedWorkDates.add(dateStr);
+                    }
+                }
+            });
+        });
+
+        // 指定を守れなかった場合はここで気づけるようにする（本来ゼロのはず）
+        if (result.brokenLocks && result.brokenLocks.length) {
+            console.error('[新エンジン] 指定セルが動きました', result.brokenLocks);
+            result.brokenLocks.forEach(b => {
+                requestConflictLog.push({
+                    staff: b.staff, date: b.date, value: b.expected,
+                    reason: `指定が保持されませんでした（${b.got || '空欄'}になっています）。ご連絡ください。`
+                });
+            });
+        }
+
+        // 指定が原因でルールと合わない箇所 → 「指定は入れたが合わない」欄へ
+        (result.issues || []).forEach(item => {
+            if (!item.fromRequest || !item.staff || !item.date) return;
+            requestConflictLog.push({
+                staff: item.staff, date: item.date,
+                value: (result.schedule[item.staff] || {})[item.date] || '',
+                reason: item.message
+            });
+        });
+
+        // 残りは「守れなかった条件」欄へ。
+        //   ・notes（指定だけで詰んでいて直せない理由）と絶対制約は1件ずつ出す
+        //   ・「できれば」止まりのもの（⑩の正社員人数など）は件数だけ1行にまとめる。
+        //     1日ずつ並べると9行10行になって、重大な問題のように見えてしまう。
+        const warnings = [];
+        (result.notes || []).forEach(n => warnings.push({ engineMessage: n.message, staff: n.staff, date: n.date }));
+
+        const SOFT_SUMMARY = {
+            'ten-fulltime-2': '⑩の正社員が2人になった日（1人が理想）',
+            'ten-fulltime-3': '⑩が正社員3人になった日（1人が理想）',
+            'five-consecutive-allowed': '5連勤になった人（月1回までは許容）',
+            'daily-shortage': '出勤人数が下限に届かなかった日',
+            'ten-count': '⑩が3人に足りなかった日',
+            'third-count': '③が指定人数に足りなかった日',
+            'blank-cell': '空欄が残ったスタッフ'
+        };
+        const softCounts = {};
+        (result.issues || []).forEach(item => {
+            if (item.fromRequest) return;
+            if (item.level === 'soft' && SOFT_SUMMARY[item.kind]) {
+                softCounts[item.kind] = (softCounts[item.kind] || 0) + 1;
+                return;
+            }
+            warnings.push({ engineMessage: item.message, staff: item.staff, date: item.date });
+        });
+        Object.keys(softCounts).forEach(kind => {
+            warnings.push({ engineMessage: `${SOFT_SUMMARY[kind]}: ${softCounts[kind]}件` });
+        });
+
+        return { warnings, elapsedMs: result.elapsedMs };
+    }
+
     function generateShift() {
         refreshStaffData();
         if (activeStaff.length === 0) {
@@ -3196,6 +3407,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 staff.fixedPublicHolidayDates.add(dateStr);
             }
             lockShiftValue(staff, dateStr, value, 'request');
+        }
+
+        // ===============================================================
+        //  新エンジン（engine.js）で組む
+        // ===============================================================
+        //  ここで組めた場合は、以下の「日ごとの割り当て + 後処理パス」は一切通さない。
+        //  旧方式は config.js の USE_NEW_ENGINE を false にすれば戻る。
+        if (useNewEngine()) {
+            const engineResult = runNewEngine(staffStats, dates, dateKeys, dailyMinimumByDate, busyDayByDate);
+            if (engineResult) {
+                lastGeneratedDates = dates;
+                lastGeneratedStaffStats = staffStats;
+                renderShiftTable(lastGeneratedDates, lastGeneratedStaffStats);
+                renderSummaryPanel(lastGeneratedStaffStats);
+                renderConflictPanel(engineResult.warnings);
+                if (shiftContainer) shiftContainer.style.display = 'block';
+                showToast(`シフトを作成しました（${generationCount}回目・${engineResult.elapsedMs}ms）`);
+                return;
+            }
+            // エンジンが使えなかったときは、黙って旧方式へ落ちる
         }
 
         // Assign day by day
@@ -3499,6 +3730,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function getCellClassByValue(val) {
+        if (val === '誕') return 'c-birthday';
         if (val === '1') return 'c-1';
         if (val === '6') return 'c-6';
         if (val === '10') return 'c-10';
@@ -3922,6 +4154,8 @@ document.addEventListener('DOMContentLoaded', () => {
         applyShiftValue(target, dateStr, nextVal, dateObj ? isWeekendOrHoliday(dateObj, dateStr) : false, { force: true });
         // 手で直した値も「指定」扱いにする（印刷で赤／以後の補正で壊さない）
         lockShiftValue(target, dateStr, nextVal, 'manual');
+        // 再生成しても残すため、月ごとの手動編集として保存する（お客さん確認済みの仕様）
+        saveManualEdit(target.name, dateStr, nextVal);
 
         applyCellValue(td, nextVal, target, dateStr);
         updateStaffSummaryTooltipForRow(td.closest('tr'), target);
