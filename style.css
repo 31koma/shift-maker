@@ -1952,6 +1952,29 @@ body {
     letter-spacing: 0.03em;
 }
 
+/* ルール設定モーダルの見出しと補足 */
+.rule-group-title {
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: var(--primary-hover);
+    border-bottom: 2px solid var(--primary-light);
+    padding-bottom: 0.25rem;
+    margin-top: 0.6rem;
+}
+
+.rule-group-title:first-child {
+    margin-top: 0;
+}
+
+.rule-note {
+    font-size: 0.82rem;
+    line-height: 1.7;
+    color: var(--text-muted);
+    background: rgba(15, 23, 42, 0.03);
+    border-radius: 8px;
+    padding: 0.6rem 0.75rem;
+}
+
 /* シフト表の名前。クリックでその人の早見表が開く */
 .shift-table td.staff-name-cell {
     cursor: pointer;
@@ -2012,9 +2035,16 @@ body {
 }
 
 /* 集計表: 合計列と平均行を目立たせる */
-.all-summary-table th.sum-col,
+/* 見出しは濃い背景に白文字。ここを薄い色にすると白文字が読めなくなる */
+.all-summary-table th.sum-col {
+    background: #4338ca;
+    color: #ffffff;
+    font-weight: 800;
+}
+
 .all-summary-table td.sum-col {
-    background: rgba(99, 102, 241, .10);
+    background: rgba(99, 102, 241, .12);
+    color: #111827;
     font-weight: 800;
 }
 

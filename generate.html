@@ -114,59 +114,97 @@
                             </svg>
                         </button>
                     </div>
-                    <div class="modal-body" style="display:flex; flex-direction:column; gap:0.75rem; max-height:55vh; overflow-y:auto;">
+                    <div class="modal-body" style="display:flex; flex-direction:column; gap:0.75rem; max-height:60vh; overflow-y:auto;">
+
+                        <div class="rule-group-title">人数</div>
                         <div class="time-setting">
-                            <label for="rule-1-count">①の基本人数</label>
+                            <label for="rule-1-count">①（早番）の人数 ／ 1日あたり</label>
                             <input id="rule-1-count" type="number" class="premium-input" min="1" max="20" value="1">
                         </div>
                         <div class="time-setting">
-                            <label for="rule-10-count">⑩の基本人数</label>
+                            <label for="rule-10-count">⑩（遅番）の人数 ／ 1日あたり</label>
                             <input id="rule-10-count" type="number" class="premium-input" min="0" max="20" value="3">
                         </div>
                         <div class="time-setting">
-                            <label><input id="rule-1-fulltime-only" type="checkbox" checked> ①に正社員を最低1人含める</label>
+                            <label><input id="rule-ten-random" type="checkbox">
+                                ⑩の正社員の人数にこだわらない（ランダム）</label>
+                        </div>
+                        <div class="rule-note">
+                            ふだんは「⑩の正社員は1人が理想。足りないときだけ2人3人」で組みます。<br>
+                            チェックを入れると、この理想をやめて成り行きに任せます。
+                            <strong>3人全員がパートにはしない</strong>ルールはチェックを入れても残ります。
                         </div>
                         <div class="time-setting">
-                            <label><input id="rule-1-no-after-10" type="checkbox" checked> ①は前日⑩の人を除外</label>
+                            <label for="rule-weekday-min">平日の最低出勤人数</label>
+                            <input id="rule-weekday-min" type="number" class="premium-input" min="0" max="40" value="11">
                         </div>
                         <div class="time-setting">
-                            <div style="font-size:0.85rem; color:var(--text-muted);">①の翌日は自動で休みになります</div>
+                            <label for="rule-weekend-min">土日祝の最低出勤人数</label>
+                            <input id="rule-weekend-min" type="number" class="premium-input" min="0" max="40" value="10">
                         </div>
                         <div class="time-setting">
-                            <label><input id="rule-require-ft-on-10" type="checkbox" checked> ⑩に正社員を最低1人含める</label>
+                            <label for="rule-third-count">行事の日に③へ入れる人数</label>
+                            <input id="rule-third-count" type="number" class="premium-input" min="0" max="10" value="2">
+                        </div>
+                        <div class="rule-note">
+                            行事の日＝月行事の画面で「人数多めチェック」を付けた日です。
+                            日ごとに人数を変えたいときは、月行事の画面でその日に人数を入れてください。
+                        </div>
+
+                        <div class="rule-group-title">連勤</div>
+                        <div class="time-setting">
+                            <label for="rule-min-consecutive">連勤の下限（これ未満の飛び石出勤を作らない）</label>
+                            <input id="rule-min-consecutive" type="number" class="premium-input" min="1" max="7" value="2">
                         </div>
                         <div class="time-setting">
-                            <label>⑩の正社員人数確率（%）</label>
-                            <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:0.5rem;">
-                                <div>
-                                    <div style="font-size:0.75rem; color:var(--text-muted);">1人</div>
-                                    <input id="rule-10-ft-p1" type="number" class="premium-input" min="0" max="100" value="40">
-                                </div>
-                                <div>
-                                    <div style="font-size:0.75rem; color:var(--text-muted);">2人</div>
-                                    <input id="rule-10-ft-p2" type="number" class="premium-input" min="0" max="100" value="40">
-                                </div>
-                                <div>
-                                    <div style="font-size:0.75rem; color:var(--text-muted);">3人</div>
-                                    <input id="rule-10-ft-p3" type="number" class="premium-input" min="0" max="100" value="20">
-                                </div>
-                            </div>
+                            <label for="rule-max-consecutive">連勤の上限</label>
+                            <input id="rule-max-consecutive" type="number" class="premium-input" min="1" max="10" value="4">
                         </div>
                         <div class="time-setting">
-                            <label><input id="rule-allow-4-consecutive" type="checkbox"> 4連勤あり</label>
+                            <label><input id="rule-allow-five-once" type="checkbox" checked>
+                                どうしても組めないときは、上限を1回だけ超えてよい</label>
                         </div>
-                        <div class="time-setting">
-                            <label><input id="rule-fill-blank-with-six" type="checkbox"> 生成完了後、空欄を6で埋める（後処理）</label>
+
+                        <div class="rule-group-title">変更できないルール</div>
+                        <div class="rule-note">
+                            お客さまと決めた内容です。ここは設定ではなく確認用の表示です。<br>
+                            ・入力した希望・手で直したセルは、生成し直しても必ずそのまま残ります<br>
+                            ・公休の日数は必ず設定どおりにします（誕生日休は公休に含みます）<br>
+                            ・誕生日は「誕」で必ず休みにします（人数が足りなくても休みます）<br>
+                            ・①はスタッフ画面で「①に参加」を付けた人だけ。翌日は必ず休みです<br>
+                            ・⑩は3人全員がパートにならないようにします。正社員1人が理想で、足りないときだけ2人3人に増やします<br>
+                            ・⑩は3日続けません。2日続けてよいのは竹田さん・岩田美さんだけです<br>
+                            ・希望休・有休・特休の前日には⑩を入れません<br>
+                            ・③は行事の日だけ。④は岡崎さんだけが使います<br>
+                            ・梶本・田渕・北窪・八田さんのうち、毎日必ず1人は出勤します
                         </div>
-                        <div class="time-setting">
-                            <div style="font-size:0.85rem; color:var(--text-muted);">公休は3連休を避ける方向で自動補正します</div>
+
+                        <div class="rule-group-title">崩すときの順番</div>
+                        <div class="rule-note">
+                            どうしても全部は守れないとき、上から順にあきらめます。<br>
+                            1. その日の出勤人数を1人減らす<br>
+                            2. 連勤の上限を1回だけ超える<br>
+                            崩した箇所は生成後の「確認したい点」に理由つきで出ます。
                         </div>
+
                         <div class="time-setting" style="display:block;">
-                            <label style="display:block; margin-bottom:0.4rem;">現在の自動生成ロジックまとめ</label>
+                            <label style="display:block; margin-bottom:0.4rem;">いまの設定のまとめ</label>
                             <div id="rule-logic-summary"
-                                style="background:rgba(15,23,42,0.04); border:1px solid rgba(15,23,42,0.08); border-radius:10px; padding:0.7rem 0.8rem; font-size:0.85rem; line-height:1.55; color:var(--text-main);">
+                                style="background:rgba(15,23,42,0.04); border:1px solid rgba(15,23,42,0.08); border-radius:10px; padding:0.7rem 0.8rem; font-size:0.85rem; line-height:1.6; color:var(--text-main);">
                             </div>
                         </div>
+
+                        <details style="margin-top:0.3rem;">
+                            <summary style="cursor:pointer; font-size:0.85rem; color:var(--text-muted);">困ったときの設定</summary>
+                            <div class="time-setting" style="margin-top:0.5rem;">
+                                <label><input id="rule-use-old-engine" type="checkbox">
+                                    以前の作り方でシフトを組む</label>
+                            </div>
+                            <div class="rule-note">
+                                新しい作り方の結果がどうしても合わないときだけ使ってください。
+                                以前の作り方には、連勤の管理・誕生日休・③④がありません。
+                            </div>
+                        </details>
                     </div>
                     <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:1rem;">
                         <button id="cancel-rule-settings" class="secondary-btn">キャンセル</button>

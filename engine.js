@@ -105,10 +105,13 @@
         thirdCount: 600,            // ③が指定人数に足りない
 
         // できれば
-        tenFulltimeTwo: 40,         // ⑩の正社員が2人（1人が理想）
-        tenFulltimeThree: 90,       // ⑩の正社員が3人
-        tenFairness: 12,            // ⑩の回数の偏り
-        oneFairness: 12,            // ①の回数の偏り
+        tenFulltimeTwo: 110,        // ⑩の正社員が2人（1人が理想）
+        tenFulltimeThree: 260,      // ⑩の正社員が3人
+        // 公平さ。平均からのズレの2乗に掛ける。
+        // 「一番多い人と一番少ない人の差」だけを見ていたときは、
+        // 真ん中の人をどう動かしても点数が変わらず、探索が方向を見失っていた。
+        tenFairness: 260,           // ⑩の回数の偏り（正社員どうし・パートどうしで比べる）
+        oneFairness: 320,           // ①の回数の偏り（①に入る人全員で比べる）
         blankCell: 25               // 空欄を作らない
     };
 
@@ -129,6 +132,10 @@
             maxConsecutiveWork: 4,
             minConsecutiveWork: 2,
             allowFiveConsecutiveOnce: true,
+            // true にすると「⑩の正社員は1人が理想」の優先順位をなくす。
+            // 「3人全員がパートにはしない」だけは残るので、
+            // 正社員1人・2人・3人がどれも同じ扱いになる＝成り行きに任せる。
+            tenFulltimeRandom: false,
             thirdShiftByDate: {},
             thirdShiftDefault: 0,
             iterations: 60000,
@@ -428,6 +435,8 @@
 
         const oneEligible = autoIdx.filter(s => staff[s].canWorkOneShift);
         const tenEligible = autoIdx.filter(s => staff[s].canWorkTenShift);
+        const tenFulltimePool = tenEligible.filter(s => staff[s].isFulltime);
+        const tenParttimePool = tenEligible.filter(s => !staff[s].isFulltime);
 
         function evaluate(grid, collect) {
             let score = 0;
@@ -589,8 +598,11 @@
                 }
                 if (tenTotal > 0) {
                     if (tenFulltime === 0) {
+                        // これだけは、ランダムモードでも必ず守る
                         hit(W.tenAllPart, 'ten-all-part', 'hard',
                             `${dates[d]} の⑩が全員パートになっています（正社員を1人以上入れてください）。`, { date: dates[d] });
+                    } else if (rules.tenFulltimeRandom) {
+                        // ランダムモード: 正社員が1人でも2人でも3人でも減点しない
                     } else if (tenFulltime === 2) {
                         hit(W.tenFulltimeTwo, 'ten-fulltime-2', 'soft',
                             `${dates[d]} の⑩の正社員が2人になりました（1人が理想）。`, { date: dates[d] });
@@ -614,24 +626,44 @@
                 }
             }
 
-            // ---- 公平性 ----
-            score += spread(grid, tenEligible, C.TEN) * W.tenFairness;
-            score += spread(grid, oneEligible, C.ONE) * W.oneFairness;
+            // ---- 公平さ ----
+            // ⑩は正社員どうし・パートどうしで比べる。
+            // 「⑩は正社員1人＋パート2人」が理想なので、
+            // パートのほうが⑩が多くなるのは構造上あたりまえ。
+            // 全員をひとまとめに比べると、そのあたりまえを直そうとして
+            // かえって正社員どうしの偏りが放置される。
+            score += unevenness(grid, tenFulltimePool, C.TEN) * W.tenFairness;
+            score += unevenness(grid, tenParttimePool, C.TEN) * W.tenFairness;
+            // ①は正社員・パートの区別なく、入る人全員で均す
+            score += unevenness(grid, oneEligible, C.ONE) * W.oneFairness;
+            // ⑥の回数は比べない。岡崎さんは⑥を使わず（④）、太田さんはほぼ⑥だけなので、
+            // ひとまとめに比べると意味のない減点が常時乗り、探索の邪魔になる。
 
             return collect ? { score, issues } : score;
         }
 
-        function spread(grid, pool, code) {
+        // 平均からのズレの2乗を合計する。
+        // max-min だと、両端が動かないかぎり点数が1ミリも動かないため、
+        // 局所探索が「どちらへ動けば公平になるか」を判断できなかった。
+        // 2乗にすると、突出した人を1回減らすのが一番効くので、
+        // 自然と山を削って谷を埋める方向へ進む。
+        function unevenness(grid, pool, code) {
             if (pool.length < 2) return 0;
-            let max = -1, min = 1e9;
+            let sum = 0;
+            const counts = new Array(pool.length);
             for (let k = 0; k < pool.length; k++) {
                 const row = grid[pool[k]];
                 let c = 0;
                 for (let d = 0; d < nD; d++) if (row[d] === code) c++;
-                if (c > max) max = c;
-                if (c < min) min = c;
+                counts[k] = c; sum += c;
             }
-            return max - min;
+            const mean = sum / pool.length;
+            let pen = 0;
+            for (let k = 0; k < pool.length; k++) {
+                const diff = counts[k] - mean;
+                pen += diff * diff;
+            }
+            return pen;
         }
 
         return { evaluate, autoIdx, manualIdx, oneEligible, tenEligible };
@@ -742,9 +774,21 @@
                 (staff[s].isFulltime ? ft : pt).push(s);
             }
             const chosen = [];
-            if (ft.length) chosen.push(ft.shift());
-            while (chosen.length < rules.tenShiftCount && pt.length) chosen.push(pt.shift());
-            while (chosen.length < rules.tenShiftCount && ft.length) chosen.push(ft.shift());
+            if (rules.tenFulltimeRandom) {
+                // 正社員1人にこだわらず、居る人から順に取る。
+                // ただし全員パートは避けたいので、正社員を1人は先に確保しておく。
+                if (ft.length) chosen.push(ft.shift());
+                const mixed = ft.concat(pt);
+                for (let i = mixed.length - 1; i > 0; i--) {
+                    const j = Math.floor(rand() * (i + 1));
+                    [mixed[i], mixed[j]] = [mixed[j], mixed[i]];
+                }
+                while (chosen.length < rules.tenShiftCount && mixed.length) chosen.push(mixed.shift());
+            } else {
+                if (ft.length) chosen.push(ft.shift());
+                while (chosen.length < rules.tenShiftCount && pt.length) chosen.push(pt.shift());
+                while (chosen.length < rules.tenShiftCount && ft.length) chosen.push(ft.shift());
+            }
             for (const s of chosen) { grid[s][d] = C.TEN; done.add(s); }
 
             // ④ — 岡崎さんだけ。⑩などに選ばれていなければ④
@@ -929,6 +973,128 @@
         return { grid: best, score: bestScore };
     }
 
+    // ------------------------------------------------------------ 仕上げ
+    //  焼きなましは終盤でも少し悪化を受け入れるため、
+    //  最後に1勤や長い連勤が1つだけ残ることがある。
+    //  ここは悪化を一切受け入れず、狙った場所だけを直す。
+    function polish(ctx, fixed, grid, evaluate, rounds) {
+        const { nS, nD, staff, dates } = ctx;
+        const { locked } = fixed;
+
+        const staffIndex = new Map(staff.map((st, i) => [st.name, i]));
+        const normalWork = new Int32Array(nS);
+        for (let s = 0; s < nS; s++) normalWork[s] = staff[s].usesFourthShift ? C.FOURTH : C.SIX;
+
+        let score = evaluate(grid);
+
+        for (let round = 0; round < rounds; round++) {
+            // いま実際に出ている違反を取り出して、そこだけを狙って直す
+            const report = evaluate(grid, true);
+            const targets = report.issues.filter(i =>
+                i.level === 'hard' && !i.fromRequest && i.staff && i.date &&
+                staffIndex.has(i.staff) && ctx.dateIndex.has(i.date));
+            if (!targets.length) break;
+
+            let improved = false;
+            for (const issue of targets) {
+                const s = staffIndex.get(issue.staff);
+                const at = ctx.dateIndex.get(issue.date);
+                // 違反の起きた日と、その前後2日ぶんを動かしてみる
+                for (let off = -2; off <= 2 && !improved; off++) {
+                    const d = at + off;
+                    if (d < 0 || d >= nD || locked[s][d]) continue;
+                    const isOffNow = !isWorkCode(grid[s][d]);
+                    // いま休みなら出勤へ、いま出勤なら休みへ。
+                    // 公休の日数を変えないため、必ずどこか別の日と入れ替える。
+                    for (let e = 0; e < nD && !improved; e++) {
+                        if (e === d || locked[s][e]) continue;
+                        if (isOffNow) {
+                            if (!countsAsPublic(grid[s][d])) continue;   // 有休・特休は動かさない
+                            if (!isWorkCode(grid[s][e])) continue;
+                        } else {
+                            if (!countsAsPublic(grid[s][e])) continue;
+                        }
+                        const a = grid[s][d], b = grid[s][e];
+                        grid[s][d] = isOffNow ? normalWork[s] : C.PUBLIC;
+                        grid[s][e] = isOffNow ? C.PUBLIC : normalWork[s];
+                        const next = evaluate(grid);
+                        if (next < score - 0.001) { score = next; improved = true; break; }
+                        grid[s][d] = a; grid[s][e] = b;
+                    }
+                }
+                if (improved) break;
+            }
+
+            // 1手ずつの入れ替えでは直らない噛み合いがある。
+            // よくあるのが①がらみ。
+            //   例) 休→①→休 の「休」を出勤に変えたい。でも前日が①なので
+            //       「①の翌日は休み」に引っかかって、直すと逆に悪くなる。
+            // そこで、その①を同じ日の別の人へ渡したうえで、もう一度入れ替えを試す。
+            if (!improved) {
+                for (const issue of targets) {
+                    const s = staffIndex.get(issue.staff);
+                    const at = ctx.dateIndex.get(issue.date);
+                    if (tryHandOverOneShift(ctx, fixed, grid, evaluate, s, at, normalWork)) {
+                        const next = evaluate(grid);
+                        if (next < score - 0.001) { score = next; improved = true; break; }
+                    }
+                }
+            }
+
+            if (!improved) break;
+        }
+        return { grid, score };
+    }
+
+    /**
+     * ①を同じ日の別の人へ渡してから、休みと出勤を入れ替え直す。
+     * 「①の翌日は休み」に阻まれて直せない噛み合いを解くための手。
+     * 良くならなければ、触ったところをすべて元に戻す。
+     */
+    function tryHandOverOneShift(ctx, fixed, grid, evaluate, s, at, normalWork) {
+        const { nS, nD, staff } = ctx;
+        const { locked } = fixed;
+        const before = evaluate(grid);
+
+        for (let off = -2; off <= 2; off++) {
+            const d = at + off;
+            if (d < 1 || d >= nD) continue;
+            if (locked[s][d]) continue;              // 指定セルは絶対に動かさない
+            const prev = d - 1;
+            // 直前が①でなければ、この手の出番ではない
+            if (grid[s][prev] !== C.ONE || locked[s][prev]) continue;
+
+            // その①を引き受けられる人を探す（同じ日に出勤していて、翌日が休みの人）
+            for (let t = 0; t < nS; t++) {
+                if (t === s || staff[t].manualOnly || !staff[t].canWorkOneShift) continue;
+                if (locked[t][prev] || !isWorkCode(grid[t][prev])) continue;
+                if (prev + 1 < nD && isWorkCode(grid[t][prev + 1])) continue;   // 翌日が出勤なら渡せない
+
+                const savedT = grid[t][prev];
+                const savedSPrev = grid[s][prev];
+                grid[t][prev] = C.ONE;
+                grid[s][prev] = normalWork[s];
+
+                // ①が外れたので、改めて休みと出勤の入れ替えを試す
+                if (!countsAsPublic(grid[s][d])) { grid[t][prev] = savedT; grid[s][prev] = savedSPrev; continue; }
+                for (let e = 0; e < nD; e++) {
+                    if (e === d || locked[s][e] || locked[s][d]) continue;
+                    if (!isWorkCode(grid[s][e])) continue;
+                    const a = grid[s][d], b = grid[s][e];
+                    grid[s][d] = normalWork[s];
+                    grid[s][e] = C.PUBLIC;
+                    if (evaluate(grid) < before - 0.001) return true;
+                    grid[s][d] = a; grid[s][e] = b;
+                }
+                // ①を渡しただけで良くなることもある
+                if (evaluate(grid) < before - 0.001) return true;
+                grid[t][prev] = savedT;
+                grid[s][prev] = savedSPrev;
+            }
+        }
+        return false;
+    }
+
     // ------------------------------------------------------------ 入口
     function generate(input) {
         const started = Date.now();
@@ -954,6 +1120,10 @@
             if (best.score < HARD_FLOOR) break;
             if (r > 0 && !improved) break;
         }
+
+        // 最後の仕上げ。焼きなましの終盤で1つだけ残った違反を、
+        // 実際に出ている違反そのものを見ながら潰す（悪化は一切受け入れない）。
+        best = polish(ctx, fixed, best.grid, ev.evaluate, 60);
 
         const final = ev.evaluate(best.grid, true);
 
@@ -996,6 +1166,7 @@
     }
 
     E.generate = generate;
+    E.polish = polish;
     E.buildInitial = buildInitial;
     E.refine = refine;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -24,9 +24,23 @@ document.addEventListener('DOMContentLoaded', () => {
         '2026-11-23'
     ]);
     const MANUAL_ONLY_IRREGULAR_NAMES = new Set(["中西"]);
+    // 新エンジンが使う設定。ルール設定の画面から変えられる。
+    // oneFulltimeOnly / oneNoAfterTen / requireFulltimeOn10 / tenFtProb1〜3 /
+    // allowFourConsecutive / fillBlankWithSix は旧エンジン専用。
+    // 新エンジンでは使わないが、「以前の作り方」に戻したときのために残してある。
     const DEFAULT_GENERATE_RULES = {
+        // --- 新エンジンで使う ---
         oneShiftCount: 1,
         tenShiftCount: 3,
+        weekdayMinimum: 11,
+        weekendMinimum: 10,
+        thirdShiftDefault: 2,
+        minConsecutiveWork: 2,
+        maxConsecutiveWork: 4,
+        allowOverConsecutiveOnce: true,
+        tenFulltimeRandom: false,
+        useOldEngine: false,
+        // --- 以前の作り方に戻したときだけ使う ---
         oneFulltimeOnly: true,
         oneNoAfterTen: true,
         requireFulltimeOn10: true,
@@ -598,6 +612,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function openRuleSettingsModal() {
+        const conf = window.SHIFT_CONFIG || {};
         const setVal = (id, val) => {
             const el = document.getElementById(id);
             if (el) el.value = val;
@@ -609,14 +624,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         setVal('rule-1-count', generateRules.oneShiftCount);
         setVal('rule-10-count', generateRules.tenShiftCount);
-        setChecked('rule-1-fulltime-only', generateRules.oneFulltimeOnly);
-        setChecked('rule-1-no-after-10', generateRules.oneNoAfterTen);
-        setChecked('rule-require-ft-on-10', generateRules.requireFulltimeOn10);
-        setVal('rule-10-ft-p1', generateRules.tenFtProb1);
-        setVal('rule-10-ft-p2', generateRules.tenFtProb2);
-        setVal('rule-10-ft-p3', generateRules.tenFtProb3);
-        setChecked('rule-allow-4-consecutive', generateRules.allowFourConsecutive);
-        setChecked('rule-fill-blank-with-six', generateRules.fillBlankWithSix);
+        setVal('rule-weekday-min', getRuleValue('weekdayMinimum', conf.WEEKDAY_MINIMUM, 11));
+        setVal('rule-weekend-min', getRuleValue('weekendMinimum', conf.WEEKEND_MINIMUM, 10));
+        setVal('rule-third-count', getRuleValue('thirdShiftDefault', conf.THIRD_SHIFT_DEFAULT, 2));
+        setVal('rule-min-consecutive', getRuleValue('minConsecutiveWork', conf.MIN_CONSECUTIVE_WORK, 2));
+        setVal('rule-max-consecutive', getRuleValue('maxConsecutiveWork', conf.MAX_CONSECUTIVE_WORK, 4));
+        setChecked('rule-ten-random', generateRules.tenFulltimeRandom === true);
+        setChecked('rule-allow-five-once', generateRules.allowOverConsecutiveOnce !== false);
+        setChecked('rule-use-old-engine', generateRules.useOldEngine === true);
         renderRuleLogicSummary();
 
         ruleSettingsModal.classList.remove('hidden');
@@ -625,6 +640,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const modalContent = ruleSettingsModal.querySelector('.modal-content');
             if (modalContent) modalContent.classList.add('show');
         }, 10);
+    }
+
+    /** ルール設定の値。保存済み → config.js の既定 → 決め打ち の順に探す */
+    function getRuleValue(key, configValue, fallback) {
+        if (generateRules[key] !== undefined && generateRules[key] !== null && generateRules[key] !== '') {
+            return generateRules[key];
+        }
+        if (configValue !== undefined && configValue !== null) return configValue;
+        return fallback;
     }
 
     function closeRuleSettingsModal() {
@@ -647,28 +671,25 @@ document.addEventListener('DOMContentLoaded', () => {
             const el = document.getElementById(id);
             return el ? !!el.checked : fallback;
         };
-        const nextRules = {
+
+        const minConsecutive = Math.max(1, getNum('rule-min-consecutive', 2));
+        let maxConsecutive = Math.max(1, getNum('rule-max-consecutive', 4));
+        if (maxConsecutive < minConsecutive) maxConsecutive = minConsecutive;
+
+        generateRules = {
             ...generateRules,
             oneShiftCount: Math.max(1, getNum('rule-1-count', generateRules.oneShiftCount)),
             tenShiftCount: getNum('rule-10-count', generateRules.tenShiftCount),
-            oneFulltimeOnly: getChk('rule-1-fulltime-only', generateRules.oneFulltimeOnly),
-            oneNoAfterTen: getChk('rule-1-no-after-10', generateRules.oneNoAfterTen),
-            requireFulltimeOn10: getChk('rule-require-ft-on-10', generateRules.requireFulltimeOn10),
-            tenFtProb1: getNum('rule-10-ft-p1', generateRules.tenFtProb1),
-            tenFtProb2: getNum('rule-10-ft-p2', generateRules.tenFtProb2),
-            tenFtProb3: getNum('rule-10-ft-p3', generateRules.tenFtProb3),
-            allowFourConsecutive: getChk('rule-allow-4-consecutive', generateRules.allowFourConsecutive),
-            fillBlankWithSix: getChk('rule-fill-blank-with-six', generateRules.fillBlankWithSix)
+            weekdayMinimum: getNum('rule-weekday-min', 11),
+            weekendMinimum: getNum('rule-weekend-min', 10),
+            thirdShiftDefault: getNum('rule-third-count', 2),
+            minConsecutiveWork: minConsecutive,
+            maxConsecutiveWork: maxConsecutive,
+            tenFulltimeRandom: getChk('rule-ten-random', false),
+            allowOverConsecutiveOnce: getChk('rule-allow-five-once', true),
+            useOldEngine: getChk('rule-use-old-engine', false)
         };
 
-        const probSum = nextRules.tenFtProb1 + nextRules.tenFtProb2 + nextRules.tenFtProb3;
-        if (probSum > 0 && probSum !== 100) {
-            nextRules.tenFtProb1 = Math.round((nextRules.tenFtProb1 / probSum) * 100);
-            nextRules.tenFtProb2 = Math.round((nextRules.tenFtProb2 / probSum) * 100);
-            nextRules.tenFtProb3 = Math.max(0, 100 - nextRules.tenFtProb1 - nextRules.tenFtProb2);
-        }
-
-        generateRules = nextRules;
         saveGenerateRules();
         renderRuleLogicSummary();
         if (lastGeneratedDates.length > 0) {
@@ -831,30 +852,44 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!ruleLogicSummary) return;
         refreshStaffData();
 
+        const conf = window.SHIFT_CONFIG || {};
         const assignable = activeStaff.filter(s => !s.manualOnly);
-        const totalStaff = assignable.length;
-        const dayCount = 31;
-        const totalPublicHolidayTarget = assignable.reduce((sum, s) => sum + (s.pubHolidays || 0), 0);
-        const normalRange = getDynamicTargetRange(totalStaff, totalPublicHolidayTarget, dayCount, false);
-        const eventRange = getDynamicTargetRange(totalStaff, totalPublicHolidayTarget, dayCount, true);
-        const p1 = Math.max(0, generateRules.tenFtProb1 || 0);
-        const p2 = Math.max(0, generateRules.tenFtProb2 || 0);
-        const p3 = Math.max(0, generateRules.tenFtProb3 || 0);
-        const oneShiftTargetCount = assignable.filter(s => s.canWorkOneShift).length;
-        const oneShiftFulltimeCount = assignable.filter(s => s.isFulltime && s.canWorkOneShift).length;
-        const oneShiftTargetText = `①参加スタッフ${oneShiftTargetCount}人（うち正社員${oneShiftFulltimeCount}人）`;
+        const oneCount = assignable.filter(s => isOneShiftEligible(s)).length;
+        const inSet = (list, name) => Array.isArray(list) && list.indexOf(name) > -1;
+        const tenCount = assignable.filter(s => !inSet(conf.NO_TEN_SHIFT_STAFF, s.name) && !s.isIrregular).length;
+        const thirdNames = (conf.THIRD_SHIFT_STAFF || []).filter(n => assignable.some(s => s.name === n));
+        const birthdayCount = assignable.filter(s => {
+            const raw = [...(staffData.fulltime || []), ...(staffData.parttime || []), ...(staffData.irregular || [])]
+                .find(x => x.name === s.name);
+            return raw && raw.birthday;
+        }).length;
+
+        const weekdayMin = getRuleValue('weekdayMinimum', conf.WEEKDAY_MINIMUM, 11);
+        const weekendMin = getRuleValue('weekendMinimum', conf.WEEKEND_MINIMUM, 10);
+        const thirdDefault = getRuleValue('thirdShiftDefault', conf.THIRD_SHIFT_DEFAULT, 2);
+        const minRun = getRuleValue('minConsecutiveWork', conf.MIN_CONSECUTIVE_WORK, 2);
+        const maxRun = getRuleValue('maxConsecutiveWork', conf.MAX_CONSECUTIVE_WORK, 4);
+        const allowOnce = generateRules.allowOverConsecutiveOnce !== false;
+        const usingOld = generateRules.useOldEngine === true || conf.USE_NEW_ENGINE === false;
 
         const lines = [
-            `・人数目安: スタッフ総数(${totalStaff}人)と公休設定の平均から日ごとの目安人数を計算`,
-            `・通常日: ${normalRange.min}〜${normalRange.max}人目安`,
-            `・人数多めチェック日: ${eventRange.min}〜${eventRange.max}人目安（通常日より少し多め）`,
-            `・①: 1日${generateRules.oneShiftCount}人（${oneShiftTargetText} / 正社員・パートを区別せず①参加者全体で均等化 / ⑩の翌日は①禁止 / ①の翌日は必ず公休）`,
-            `・⑩: 1日${generateRules.tenShiftCount}人、正社員最低${generateRules.requireFulltimeOn10 ? '1人' : '0人'}、正社員人数確率=${p1}%/${p2}%/${p3}%`,
-            '・公休: 各スタッフ設定回数（上限8）を優先、自動生成の公休は最大2連休までに補正',
-            `・連勤: ${generateRules.allowFourConsecutive ? '4連勤まで許可（5連勤以上は禁止）' : '3連勤の翌日は必ず公休（4連勤ありは初期OFF）'}`,
-            `・空白補完: ${generateRules.fillBlankWithSix ? '生成完了後に空欄を6で埋める（後処理）' : '空欄後処理なし（初期OFF）'}`,
-            '・最終調整: 人数が少ない日を再配分して下振れを抑制し、土日祝の勤務/休み回数差もできるだけ均等化'
+            `・出勤人数: 平日${weekdayMin}人以上、土日祝${weekendMin}人以上`,
+            `・連勤: ${minRun}〜${maxRun}日` + (allowOnce ? `（どうしても組めないときだけ、月1回まで${maxRun + 1}日を許す）` : '（超えない）'),
+            `・①: 1日${generateRules.oneShiftCount}人。入れるのは${oneCount}人（スタッフ画面で「①に参加」を付けた人）。翌日は必ず休み`,
+            `・⑩: 1日${generateRules.tenShiftCount}人。入れるのは${tenCount}人。3人全員がパートにはしない`
+                + (generateRules.tenFulltimeRandom === true
+                    ? '（正社員の人数はランダム）'
+                    : '（正社員1人が理想。足りないときだけ2人3人）'),
+            `・③: 行事の日だけ${thirdDefault}人` + (thirdNames.length ? `。入れるのは ${thirdNames.join('・')} さん` : ''),
+            '・④: 岡崎さんの通常勤務（⑥の代わり）。行事の日も④のまま',
+            `・公休: 設定した日数ちょうど。誕生日休「誕」は公休に含む（誕生日を登録済み ${birthdayCount}人）`,
+            '・特休・有休: 公休とは別枠。入れたぶん休みが増える',
+            '・希望と手直し: 生成し直しても必ずそのまま残る',
+            '・公平さ: ①は入る人全員で、⑩は正社員どうし・パートどうしで、回数を均します'
         ];
+        if (usingOld) {
+            lines.unshift('⚠ いまは「以前の作り方」で組んでいます。上のルールのうち、連勤・誕生日休・③④は効きません');
+        }
 
         ruleLogicSummary.innerHTML = lines.map(line => `<div>${escapeHtml(line)}</div>`).join('');
     }
@@ -3149,7 +3184,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function useNewEngine() {
         const conf = window.SHIFT_CONFIG || {};
-        return conf.USE_NEW_ENGINE !== false && !!(window.ShiftEngine && window.ShiftEngine.generate);
+        if (conf.USE_NEW_ENGINE === false) return false;
+        // ルール設定の「以前の作り方でシフトを組む」チェック
+        if (generateRules.useOldEngine === true) return false;
+        return !!(window.ShiftEngine && window.ShiftEngine.generate);
     }
 
     /** 手動編集を月ごとに覚えておく入れ物（再生成しても残すため） */
@@ -3222,13 +3260,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 manualLocks: loadManualEdits(currentYear, currentTargetMonth),
                 isHolidayDate: dateStr => isHolidayDateStr(dateStr),
                 rules: {
-                    weekdayMinimum: conf.WEEKDAY_MINIMUM || 11,
-                    weekendMinimum: conf.WEEKEND_MINIMUM || 10,
+                    weekdayMinimum: getRuleValue('weekdayMinimum', conf.WEEKDAY_MINIMUM, 11),
+                    weekendMinimum: getRuleValue('weekendMinimum', conf.WEEKEND_MINIMUM, 10),
                     oneShiftCount: generateRules.oneShiftCount,
                     tenShiftCount: generateRules.tenShiftCount,
-                    minConsecutiveWork: conf.MIN_CONSECUTIVE_WORK || 2,
-                    maxConsecutiveWork: conf.MAX_CONSECUTIVE_WORK || 4,
-                    thirdShiftDefault: conf.THIRD_SHIFT_DEFAULT || 0,
+                    minConsecutiveWork: getRuleValue('minConsecutiveWork', conf.MIN_CONSECUTIVE_WORK, 2),
+                    maxConsecutiveWork: getRuleValue('maxConsecutiveWork', conf.MAX_CONSECUTIVE_WORK, 4),
+                    allowFiveConsecutiveOnce: generateRules.allowOverConsecutiveOnce !== false,
+                    tenFulltimeRandom: generateRules.tenFulltimeRandom === true,
+                    thirdShiftDefault: getRuleValue('thirdShiftDefault', conf.THIRD_SHIFT_DEFAULT, 0),
                     thirdShiftByDate: buildThirdShiftByDate(dateKeys),
                     seed: Math.floor(Math.random() * 2147483647)
                 }
@@ -3244,7 +3284,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const d = new Date(dateStr + 'T00:00:00');
             const weekendish = isWeekendOrHoliday(d, dateStr);
             dailyMinimumByDate[dateStr] = weekendish
-                ? (conf.WEEKEND_MINIMUM || 10) : (conf.WEEKDAY_MINIMUM || 11);
+                ? getRuleValue('weekendMinimum', conf.WEEKEND_MINIMUM, 10)
+                : getRuleValue('weekdayMinimum', conf.WEEKDAY_MINIMUM, 11);
             busyDayByDate[dateStr] = isBusyDay(eventData[dateStr] || {});
         });
 
