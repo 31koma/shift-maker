@@ -606,6 +606,11 @@
                 if (thirdNeed[d] > thirdTotal) {
                     hit(W.thirdCount * (thirdNeed[d] - thirdTotal), 'third-count', 'soft',
                         `${dates[d]} の③が${thirdTotal}人で、指定の${thirdNeed[d]}人に足りません。`, { date: dates[d] });
+                } else if (busyDay[d] && thirdTotal > thirdNeed[d]) {
+                    // 行事の日の③は「指定人数ちょうど」。多い分も戻す。
+                    // 足りない側しか見ていなかったため、③が必要以上に増えていた。
+                    hit(W.thirdCount * (thirdTotal - thirdNeed[d]), 'third-over', 'soft',
+                        `${dates[d]} の③が${thirdTotal}人で、指定の${thirdNeed[d]}人より多く入っています。`, { date: dates[d] });
                 }
             }
 

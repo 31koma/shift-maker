@@ -171,6 +171,32 @@ document.addEventListener('DOMContentLoaded', () => {
             if (e.key === 'Escape') hideSummaryPanel({ force: true });
         });
         window.addEventListener('resize', positionSummaryPanel);
+
+        // シフト表の名前クリックから開けるように、外へ出しておく
+        openSummaryPanelForStaff = function (staffName) {
+            renderSummaryPanel(lastGeneratedStaffStats);
+            highlightSummaryRow(staffName);
+            showSummaryPanel({ pinned: true });
+        };
+    }
+
+    // 名前クリックで早見表を開くための入口。initSummaryHoverPanel が中身を入れる。
+    let openSummaryPanelForStaff = null;
+
+    /** 早見表のなかの1行だけ目立たせて、そこまでスクロールする */
+    function highlightSummaryRow(staffName) {
+        if (!summaryHoverPanel) return;
+        const rows = summaryHoverPanel.querySelectorAll('.all-summary-table tbody tr');
+        let target = null;
+        rows.forEach(row => {
+            const nameCell = row.children[0];
+            const isTarget = nameCell && nameCell.textContent.trim() === staffName;
+            row.classList.toggle('is-highlight', isTarget);
+            if (isTarget) target = row;
+        });
+        if (target && target.scrollIntoView) {
+            target.scrollIntoView({ block: 'nearest' });
+        }
     }
 
     function moveStaffAfter(list, staffName, previousName) {
@@ -930,7 +956,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
         }
+        tableContainer.addEventListener('click', handleStaffNameClick);
         tableContainer.addEventListener('click', handleShiftCellClick);
+        tableContainer.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter' && e.key !== ' ') return;
+            if (!e.target.closest('.staff-name-cell')) return;
+            e.preventDefault();
+            handleStaffNameClick(e);
+        });
     }
 
     function getYesterdayShift(staff, dateObj) {
@@ -3271,6 +3304,7 @@ document.addEventListener('DOMContentLoaded', () => {
             'daily-shortage': '出勤人数が下限に届かなかった日',
             'ten-count': '⑩が3人に足りなかった日',
             'third-count': '③が指定人数に足りなかった日',
+            'third-over': '③が指定人数より多く入った日',
             'blank-cell': '空欄が残ったスタッフ'
         };
         const softCounts = {};
@@ -3969,7 +4003,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const isHoliday = isHolidayDateStr(dateStr);
             // 土日祝の「休み」には公休・有休・特休すべてを含める
             const isOff = isOffValue(val);
-            if (val === '公') {
+            // 誕生日休は公休に含める（お客さん確認済み）
+            if (val === '公' || val === '誕') {
                 counts.publicHoliday += 1;
             } else if (val === '有' || val === '有休' || val === '特' || val === '特休') {
                 counts.paidLeave += 1;
@@ -4136,6 +4171,18 @@ document.addEventListener('DOMContentLoaded', () => {
         renderSummaryPanel(lastGeneratedStaffStats);
     }
 
+    /** シフト表の名前をクリック → その人の行を目立たせて早見表を開く */
+    function handleStaffNameClick(e) {
+        const nameCell = e.target.closest('.staff-name-cell[data-staff-name]');
+        if (!nameCell) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const staffName = nameCell.dataset.staffName;
+        if (typeof openSummaryPanelForStaff === 'function') {
+            openSummaryPanelForStaff(staffName);
+        }
+    }
+
     function handleShiftCellClick(e) {
         const td = e.target.closest('td.cell[data-name][data-date]');
         if (!td || lastGeneratedStaffStats.length === 0) return;
@@ -4209,7 +4256,11 @@ document.addEventListener('DOMContentLoaded', () => {
         function makeRows(group) {
             group.forEach(s => {
                 const displayName = s.name;
-                tbody += `<tr class="staff-shift-row"><td class="sticky-col">${escapeHtml(displayName)}</td>`;
+                // 名前をクリックすると、その人の行を目立たせた早見表が開く
+                tbody += `<tr class="staff-shift-row"><td class="sticky-col staff-name-cell" `
+                    + `data-staff-name="${escapeAttr(s.name)}" role="button" tabindex="0" `
+                    + `title="クリックすると${escapeAttr(s.name)}さんの早見表が開きます">`
+                    + `${escapeHtml(displayName)}</td>`;
                 dates.forEach(d => {
                     const dateStr = formatDateForData(d);
                     const rawVal = s.schedule[dateStr] || '';
