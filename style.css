@@ -1525,6 +1525,11 @@ body {
     font-weight: 700;
 }
 
+/* 指定（希望入力・手動編集）のセル: 画面では赤い枠、印刷では赤文字 */
+.shift-table td.cell.c-designated {
+    box-shadow: inset 0 0 0 2px #dc2626;
+}
+
 .shift-table td.cell.c-k-fixed {
     background: #fecaca;
     color: #111827;
@@ -1871,7 +1876,7 @@ body {
     }
 
     .shift-table td.cell.c-k-fixed {
-        background: #fecaca !important;
+        background: #fff !important;
         color: #000 !important;
     }
 
@@ -1893,6 +1898,17 @@ body {
 
     .shift-table .sticky-col {
         position: static !important;
+    }
+
+    /* 指定（希望入力・手動編集）だけ赤で刷る。
+       休みも数字も対象。自動生成でついた分は白黒のまま。
+       他の色指定を確実に上回るよう、この定義を最後に置いている。 */
+    .shift-table td.cell.c-designated,
+    .shift-table td.cell.c-designated .cell-value {
+        color: #d40000 !important;
+        font-weight: 800 !important;
+        background: #fff !important;
+        box-shadow: none !important;
     }
 
     .shift-table tr,
@@ -1931,4 +1947,17 @@ body {
     .app-footer {
         display: none !important;
     }
+}
+
+/* 集計表: 合計列と平均行を目立たせる */
+.all-summary-table th.sum-col,
+.all-summary-table td.sum-col {
+    background: rgba(99, 102, 241, .10);
+    font-weight: 800;
+}
+
+.all-summary-table tr.avg-row td {
+    border-top: 2px solid rgba(0, 0, 0, .25);
+    font-weight: 800;
+    background: rgba(0, 0, 0, .03);
 }

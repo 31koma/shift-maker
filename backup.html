@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>シフト作るくん - バックアップ</title>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700;900&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="config.js"></script>
+    <script src="backup.js"></script>
+    <script src="auth.js"></script>
+</head>
+
+<body>
+    <div class="app-container">
+        <header class="glass-header">
+            <div class="header-content">
+                <div class="header-titles">
+                    <h1>シフト作るくん</h1>
+                    <span class="subtitle">バックアップ</span>
+                </div>
+            </div>
+
+            <nav class="top-nav">
+                <a href="top.html" class="nav-btn">トップ</a>
+                <a href="calendar.html" class="nav-btn">月行事</a>
+                <a href="staff.html" class="nav-btn">スタッフ</a>
+                <a href="request.html" class="nav-btn">休み希望</a>
+                <a href="generate.html" class="nav-btn">シフト表</a>
+                <a href="backup.html" class="nav-btn active">バックアップ</a>
+            </nav>
+        </header>
+
+        <main class="main-content">
+
+            <div class="glass-panel" style="padding:1.5rem; margin-bottom:1.25rem;">
+                <h2 style="font-size:1.125rem; margin-bottom:.5rem; color:var(--primary-color);">状態</h2>
+                <div id="bk-status" style="font-size:.95rem; line-height:1.8;">確認中…</div>
+                <div style="display:flex; gap:.75rem; flex-wrap:wrap; margin-top:1rem;">
+                    <button type="button" id="bk-now" class="primary-btn">今すぐバックアップ</button>
+                    <button type="button" id="bk-export" class="secondary-btn">ファイルに書き出す</button>
+                    <button type="button" id="bk-import-btn" class="secondary-btn">ファイルから復元</button>
+                    <input type="file" id="bk-import" accept=".json,application/json" style="display:none;">
+                </div>
+                <p style="font-size:.82rem; color:var(--text-muted); margin-top:.9rem; line-height:1.7;">
+                    書き出したファイルは、USBメモリやクラウド（iCloud / Google ドライブ など）にも
+                    コピーしておいてください。パソコンごと壊れた場合の備えになります。
+                </p>
+            </div>
+
+            <div class="glass-panel" style="padding:1.5rem; margin-bottom:1.25rem;">
+                <h2 style="font-size:1.125rem; margin-bottom:.5rem; color:var(--primary-color);">いま入っているデータ</h2>
+                <div id="bk-stats">読み込み中…</div>
+            </div>
+
+            <div class="glass-panel" id="bk-history-section" style="padding:1.5rem;">
+                <h2 style="font-size:1.125rem; margin-bottom:.5rem; color:var(--primary-color);">
+                    自動バックアップの履歴
+                </h2>
+                <p style="font-size:.85rem; color:var(--text-muted); margin-bottom:.9rem; line-height:1.7;">
+                    データを変えるたびに自動で保存されています。保存先は
+                    <code id="bk-dir" style="font-size:.8rem;">-</code> です。
+                    戻したい時点を選んで「この状態に戻す」を押してください。
+                </p>
+                <div id="bk-list">読み込み中…</div>
+            </div>
+
+        </main>
+    </div>
+
+    <footer class="app-footer">
+        ご要望・お問い合わせ: <span class="footer-mail" onclick="navigator.clipboard.writeText('komatobi3@gmail.com').then(()=>{this.textContent='コピーしました!';setTimeout(()=>{this.textContent='komatobi3@gmail.com';},1500);})" title="クリックでコピー">komatobi3@gmail.com</span>
+    </footer>
+
+    <div id="toast" class="toast hidden">
+        <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+        </svg>
+        <span id="toast-message">保存しました</span>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function () {
+        var KEY_LABEL = {
+            'shiftApp_staffData': 'スタッフ名簿・公休数の設定',
+            'shiftApp_eventData': '月行事カレンダーの書き込み',
+            'shiftApp_requestData': '休み希望・出勤指定',
+            'shiftApp_timeSettings': '勤務区分の時間設定',
+            'shiftApp_generateRules': '自動生成のルール設定',
+            'shiftApp_savedShiftResults': '保存したシフト表',
+            'shiftApp_staffData_original': '（予備）最初のスタッフデータ'
+        };
+
+        function toast(message) {
+            var el = document.getElementById('toast');
+            var msg = document.getElementById('toast-message');
+            if (!el || !msg) { return; }
+            msg.textContent = message;
+            el.classList.remove('hidden');
+            setTimeout(function () { el.classList.add('hidden'); }, 2600);
+        }
+
+        function fmtBytes(n) {
+            if (n < 1024) return n + ' B';
+            if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+            return (n / 1024 / 1024).toFixed(2) + ' MB';
+        }
+
+        function fmtWhen(iso) {
+            if (!iso) return '-';
+            var d = new Date(iso);
+            if (isNaN(d.getTime())) return iso;
+            var p = function (n) { return String(n).padStart(2, '0'); };
+            return d.getFullYear() + '/' + p(d.getMonth() + 1) + '/' + p(d.getDate())
+                + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+        }
+
+        function nameToWhen(name) {
+            var m = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})-/.exec(name);
+            if (!m) return name;
+            return m[1] + '/' + m[2] + '/' + m[3] + ' ' + m[4] + ':' + m[5] + ':' + m[6];
+        }
+
+        var SOURCE_LABEL = {
+            pageload: '画面を開いた時',
+            change: '入力を変えた時',
+            manual: '手動',
+            unload: '画面を閉じた時',
+            prerestore: '復元する直前',
+            restored: '復元した直後',
+            auto: '自動'
+        };
+
+        function renderStatus() {
+            var s = window.ShiftBackup.stats();
+            var lines = [];
+
+            if (s.mode === 'manual') {
+                lines.push('<div style="padding:.7rem .9rem; border-radius:8px; background:#fffbeb;'
+                    + ' border:1px solid #fcd34d; margin-bottom:.8rem; line-height:1.8;">'
+                    + '<strong>このURLでは自動バックアップは使えません。</strong><br>'
+                    + '下の「ファイルに書き出す」で、ときどき手元に保存してください。'
+                    + '書き出したファイルはUSBやクラウドにも置いておくと安心です。'
+                    + '</div>');
+                lines.push('<div><strong>自動バックアップ:</strong> '
+                    + '<span style="color:#b45309;">使えません（手動の書き出しのみ）</span></div>');
+                lines.push('<div><strong>最後に書き出した日:</strong> '
+                    + (s.lastExportAt ? fmtWhen(s.lastExportAt) : '<span style="color:#b91c1c;">まだ一度もありません</span>')
+                    + '</div>');
+                lines.push('<div><strong>書き出していない変更:</strong> ' + s.changesSinceExport + ' 件</div>');
+            } else {
+                var ok = s.serverAvailable !== false;
+                lines.push('<div><strong>自動バックアップ:</strong> '
+                    + (ok ? '<span style="color:#15803d;">動作中</span>'
+                          : '<span style="color:#b91c1c;">停止中 — ' + (s.lastError || '原因不明') + '</span>') + '</div>');
+                lines.push('<div><strong>最後に保存した時刻:</strong> ' + fmtWhen(s.lastSavedAt) + '</div>');
+            }
+
+            lines.push('<div><strong>データ量の合計:</strong> ' + fmtBytes(s.totalBytes) + '</div>');
+            lines.push('<div><strong>いま開いているURL:</strong> <code style="font-size:.8rem;">' + s.origin + '</code></div>');
+            if (s.mode === 'server') {
+                lines.push('<div><strong>動いているアプリのフォルダ:</strong> <code style="font-size:.8rem;">'
+                    + (s.serverRoot || '(不明)') + '</code></div>');
+            }
+            document.getElementById('bk-status').innerHTML = lines.join('');
+
+            // 保存先が無い環境では、自動バックアップ関係のボタンと履歴を隠す
+            var isManual = s.mode === 'manual';
+            var nowBtn = document.getElementById('bk-now');
+            if (nowBtn) nowBtn.style.display = isManual ? 'none' : '';
+            var histSection = document.getElementById('bk-history-section');
+            if (histSection) histSection.style.display = isManual ? 'none' : '';
+        }
+
+        function renderStats() {
+            var s = window.ShiftBackup.stats();
+            if (!s.keys.length) {
+                document.getElementById('bk-stats').innerHTML =
+                    '<div style="color:#b91c1c; font-weight:700;">データが1件もありません。'
+                    + 'URLを間違えて開いている可能性があります。</div>';
+                return;
+            }
+            var rows = s.keys.map(function (k) {
+                var label = KEY_LABEL[k.key] || k.key;
+                var count = (k.count === null) ? '-' : (k.count + ' 件');
+                return '<tr><td style="padding:.4rem .8rem .4rem 0;">' + label + '</td>'
+                    + '<td style="padding:.4rem .8rem; text-align:right; font-variant-numeric:tabular-nums;">' + count + '</td>'
+                    + '<td style="padding:.4rem 0; text-align:right; color:var(--text-muted); font-variant-numeric:tabular-nums;">'
+                    + fmtBytes(k.bytes) + '</td></tr>';
+            }).join('');
+            document.getElementById('bk-stats').innerHTML =
+                '<table style="width:100%; max-width:560px; font-size:.92rem; border-collapse:collapse;">'
+                + '<thead><tr style="border-bottom:1px solid rgba(0,0,0,.12);">'
+                + '<th style="text-align:left; padding-bottom:.4rem;">内容</th>'
+                + '<th style="text-align:right; padding-bottom:.4rem;">件数</th>'
+                + '<th style="text-align:right; padding-bottom:.4rem;">サイズ</th></tr></thead>'
+                + '<tbody>' + rows + '</tbody></table>';
+        }
+
+        function renderList() {
+            var box = document.getElementById('bk-list');
+            window.ShiftBackup.listServerBackups().then(function (res) {
+                document.getElementById('bk-dir').textContent = res.dir || '-';
+                if (!res.items.length) {
+                    box.innerHTML = '<div style="color:var(--text-muted);">まだバックアップがありません。'
+                        + '「今すぐバックアップ」を押してください。</div>';
+                    return;
+                }
+                var rows = res.items.map(function (item) {
+                    var total = Object.keys(item.counts || {}).reduce(function (a, k) { return a + (item.counts[k] || 0); }, 0);
+                    return '<tr style="border-bottom:1px solid rgba(0,0,0,.07);">'
+                        + '<td style="padding:.5rem .8rem .5rem 0; white-space:nowrap;">' + nameToWhen(item.name) + '</td>'
+                        + '<td style="padding:.5rem .8rem; color:var(--text-muted); white-space:nowrap;">'
+                        + (SOURCE_LABEL[item.source] || item.source || '-') + '</td>'
+                        + '<td style="padding:.5rem .8rem; text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">'
+                        + total + ' 件 / ' + fmtBytes(item.bytes) + '</td>'
+                        + '<td style="padding:.5rem 0; text-align:right;">'
+                        + '<button type="button" class="secondary-btn bk-restore" data-name="' + item.name
+                        + '" style="padding:.28rem .7rem; font-size:.8rem;">この状態に戻す</button></td>'
+                        + '</tr>';
+                }).join('');
+                box.innerHTML = '<div style="max-height:420px; overflow:auto;">'
+                    + '<table style="width:100%; font-size:.9rem; border-collapse:collapse;">'
+                    + '<tbody>' + rows + '</tbody></table></div>';
+
+                Array.prototype.forEach.call(box.querySelectorAll('.bk-restore'), function (btn) {
+                    btn.addEventListener('click', function () {
+                        var name = btn.dataset.name;
+                        if (!window.confirm(nameToWhen(name) + ' の状態に戻します。\n\n'
+                            + '今のデータは上書きされますが、戻す直前の状態も自動でバックアップされます。\n続けますか？')) return;
+                        btn.disabled = true;
+                        window.ShiftBackup.restoreFromServer(name).then(function (keys) {
+                            toast('復元しました（' + keys.length + '項目）');
+                            renderStatus(); renderStats(); renderList();
+                        }).catch(function (e) {
+                            window.alert('復元に失敗しました: ' + e.message);
+                        }).then(function () { btn.disabled = false; });
+                    });
+                });
+            }).catch(function (e) {
+                box.innerHTML = '<div style="color:#b91c1c;">一覧を取得できません: ' + e.message
+                    + '<br>起動用ファイルからサーバーを立ち上げているか確認してください。</div>';
+            });
+        }
+
+        document.getElementById('bk-now').addEventListener('click', function () {
+            var btn = this;
+            btn.disabled = true;
+            window.ShiftBackup.backupNow().then(function (r) {
+                toast(r && r.skipped ? '前回と同じ内容のため保存を省略しました' : 'バックアップしました');
+                renderStatus(); renderList();
+            }).then(function () { btn.disabled = false; });
+        });
+
+        document.getElementById('bk-export').addEventListener('click', function () {
+            var name = window.ShiftBackup.exportToFile();
+            toast(name + ' を書き出しました');
+        });
+
+        document.getElementById('bk-import-btn').addEventListener('click', function () {
+            document.getElementById('bk-import').click();
+        });
+
+        document.getElementById('bk-import').addEventListener('change', function (e) {
+            var file = e.target.files && e.target.files[0];
+            if (!file) return;
+            if (!window.confirm(file.name + ' から復元します。\n\n'
+                + '今のデータは上書きされますが、戻す直前の状態も自動でバックアップされます。\n続けますか？')) {
+                e.target.value = '';
+                return;
+            }
+            window.ShiftBackup.importFromFile(file).then(function (keys) {
+                toast('復元しました（' + keys.length + '項目）');
+                renderStatus(); renderStats(); renderList();
+            }).catch(function (err) {
+                window.alert('復元に失敗しました: ' + err.message);
+            }).then(function () { e.target.value = ''; });
+        });
+
+        window.ShiftBackup.ready().then(function (mode) {
+            renderStatus();
+            renderStats();
+            if (mode === 'server') renderList();
+        });
+    });
+    </script>
+</body>
+
+</html>

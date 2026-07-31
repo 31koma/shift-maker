@@ -1,6 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     const SHIFT_TYPES = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"];
-    const MAX_PUBLIC_HOLIDAYS = 8;
+    // 共通設定（config.js）から読む。取得できない場合だけ従来値を使う。
+    const MAX_PUBLIC_HOLIDAYS = (window.SHIFT_CONFIG && window.SHIFT_CONFIG.MAX_PUBLIC_HOLIDAYS) || 8;
     const DEFAULT_MAX_CONSECUTIVE_WORK_DAYS = 3;
     const HOLIDAYS_2026 = new Set([
         '2026-01-01',
@@ -188,6 +189,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function normalizeStaffData(rawStaffData) {
+        // この関数はスタッフデータを書き換えて localStorage に保存し直す。
+        // つまり「画面を開いただけ」でデータが上書きされる。
+        // 万一の巻き戻し用に、初回だけ正規化前の生データを別キーへ退避しておく。
+        try {
+            if (rawStaffData && !localStorage.getItem('shiftApp_staffData_original')) {
+                localStorage.setItem('shiftApp_staffData_original', JSON.stringify(rawStaffData));
+            }
+        } catch (e) {
+            // 退避に失敗しても本来の処理は続ける
+        }
+
         let normalized = rawStaffData;
         let shouldSave = false;
         if (!normalized || !normalized.fulltime) {
@@ -846,6 +858,16 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('prev-month').addEventListener('click', () => changeMonth(-1));
         document.getElementById('next-month').addEventListener('click', () => changeMonth(1));
         document.getElementById('generate-btn').addEventListener('click', generateShift);
+        const conflictToggle = document.getElementById('conflict-toggle');
+        if (conflictToggle) {
+            conflictToggle.addEventListener('click', () => {
+                const body = document.getElementById('conflict-body');
+                if (!body) return;
+                const hidden = body.style.display === 'none';
+                body.style.display = hidden ? 'block' : 'none';
+                conflictToggle.textContent = hidden ? '閉じる' : '開く';
+            });
+        }
         if (saveResultBtn) saveResultBtn.addEventListener('click', saveCurrentResult);
         if (openSavedResultsBtn) openSavedResultsBtn.addEventListener('click', openSavedResultsModal);
         document.getElementById('pdf-btn').addEventListener('click', () => {
@@ -2112,9 +2134,58 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function applyShiftValue(staff, dateStr, newVal, isSpecialTargetDay) {
-        const oldVal = staff.schedule[dateStr] || '';
+    // =====================================================================
+    // 指定セルのロック
+    //   最優先ルール:「ユーザーが入力した指定は100%保持する。
+    //                 自動生成による変更・削除・空欄化は一切行わない。」
+    //   applyShiftValue はスケジュールへの唯一の書き込み口なので、
+    //   ここに関所を置けば、後処理パスが何個あっても指定を壊せなくなる。
+    // =====================================================================
+    let blockedWriteLog = [];
+    let requestConflictLog = [];
+
+    function resetBlockedWriteLog() {
+        blockedWriteLog = [];
+        requestConflictLog = [];
+    }
+
+    function lockShiftValue(staff, dateStr, value, source) {
+        if (!staff.lockedDates) staff.lockedDates = new Set();
+        if (!staff.lockedValues) staff.lockedValues = {};
+        if (!staff.lockedSources) staff.lockedSources = {};
+        staff.lockedDates.add(dateStr);
+        staff.lockedValues[dateStr] = value || '';
+        staff.lockedSources[dateStr] = source || 'request';
+    }
+
+    function isLockedCell(staff, dateStr) {
+        return !!(staff && staff.lockedDates && staff.lockedDates.has(dateStr));
+    }
+
+    function getLockedValue(staff, dateStr) {
+        if (!isLockedCell(staff, dateStr)) return null;
+        return staff.lockedValues ? (staff.lockedValues[dateStr] || '') : '';
+    }
+
+    function applyShiftValue(staff, dateStr, newVal, isSpecialTargetDay, options) {
         const normalizedNewVal = newVal || '';
+
+        // 指定セルは、明示的に force を指定した場合以外は書き換えない
+        if (!(options && options.force) && isLockedCell(staff, dateStr)) {
+            const lockedVal = getLockedValue(staff, dateStr);
+            if (normalizedNewVal !== lockedVal) {
+                blockedWriteLog.push({
+                    staff: staff.name,
+                    date: dateStr,
+                    kept: lockedVal,
+                    attempted: normalizedNewVal,
+                    source: (staff.lockedSources && staff.lockedSources[dateStr]) || 'request'
+                });
+                return;
+            }
+        }
+
+        const oldVal = staff.schedule[dateStr] || '';
         if (oldVal === normalizedNewVal) return;
 
         if (oldVal === '1') staff.count1--;
@@ -2850,6 +2921,155 @@ document.addEventListener('DOMContentLoaded', () => {
         return warnings;
     }
 
+    // =====================================================================
+    // 生成結果の問題点を画面に出す
+    //   これまで console.warn にしか出ておらず、
+    //   「指定が入らなかった」ことにユーザーが気づけなかった。
+    // =====================================================================
+    function formatConflictDate(dateStr) {
+        const d = new Date(`${dateStr}T00:00:00`);
+        if (isNaN(d.getTime())) return dateStr;
+        const week = ['日', '月', '火', '水', '木', '金', '土'][d.getDay()];
+        return `${d.getMonth() + 1}/${d.getDate()}(${week})`;
+    }
+
+    function describeWarning(w) {
+        const who = w.staff ? `${w.staff}さん` : '';
+        const when = w.date ? formatConflictDate(w.date) : '';
+        switch (w.type) {
+            case 'fixed-request-overwritten':
+                return `${when} ${who}の指定「${w.expected}」が反映できませんでした（今は「${w.actual || '空欄'}」）`;
+            case 'fixed-work-request-overwritten':
+                return `${when} ${who}の出勤指定「${getShiftLabel(w.expected)}」が反映できませんでした（今は「${w.actual || '空欄'}」）`;
+            case 'fixed-public-holiday-overwritten':
+                return `${when} ${who}の希望休が消えています（今は「${w.actual || '空欄'}」）`;
+            case 'work-after-one':
+                return `${when} ${who}は①の翌日が休みになっていません（翌日は「${getShiftLabel(w.nextValue)}」）`;
+            case 'one-after-ten':
+                return `${when} ${who}は⑩の翌日に①が入っています`;
+            case 'generated-public-three-plus':
+                return `${who}の公休が3日以上続いています（${(w.dates || []).map(formatConflictDate).join('・')}）`;
+            case 'consecutive-work-limit':
+                return `${who}が${(w.dates || []).length}連勤になっています（上限${w.maxAllowed}日／${(w.dates || []).map(formatConflictDate).join('・')}）`;
+            case 'counter-mismatch':
+                return `${who}の集計値がずれています（${w.counter}: 記録${w.stored} / 実際${w.actual}）`;
+            case 'one-fairness-gap':
+                return `①の回数に${w.gap}回の差があります（最多${w.max}回・最少${w.min}回）`;
+            case 'ten-fairness-gap':
+                return `⑩の回数に${w.gap}回の差があります（最多${w.max}回・最少${w.min}回）`;
+            case 'final-day-public-concentration':
+                return `${formatConflictDate(w.date)} 最終日に公休が集中しています（${w.publicCount}人）`;
+            case 'daily-minimum-shortage':
+                return `${when} 出勤${w.actual}人（目安${w.required}人に${w.required - w.actual}人足りません）`;
+            case 'final-day-minimum-shortage':
+                return null; // daily-minimum-shortage と重複するため出さない
+            case 'missing-fulltime-core-worker':
+                return `${when} 正社員常勤が1人も出勤していません`;
+            case 'missing-daily-one-shift':
+                return `${when} ①に誰も入っていません`;
+            case 'ten-without-fulltime':
+                return `${when} ⑩に正社員が入っていません`;
+            case 'missing-weekend-priority-ten':
+                return `${when} 土日祝の⑩に優先スタッフが入っていません`;
+            default:
+                return `${when} ${who} ${w.type}`;
+        }
+    }
+
+    const CONFLICT_PRIORITY = {
+        'fixed-request-overwritten': 0,
+        'fixed-work-request-overwritten': 0,
+        'fixed-public-holiday-overwritten': 0,
+        'daily-minimum-shortage': 1,
+        'missing-daily-one-shift': 1,
+        'missing-fulltime-core-worker': 1,
+        'ten-without-fulltime': 1,
+        'consecutive-work-limit': 2,
+        'generated-public-three-plus': 2,
+        'work-after-one': 2,
+        'one-after-ten': 2
+    };
+
+    function renderConflictPanel(warnings) {
+        const panel = document.getElementById('conflict-panel');
+        const body = document.getElementById('conflict-body');
+        const countEl = document.getElementById('conflict-count');
+        const titleEl = document.getElementById('conflict-title');
+        if (!panel || !body) return;
+
+        const sections = [];
+
+        // 1) 指定を守るために弾いた上書き（守れた証拠なので情報として出す）
+        if (blockedWriteLog.length) {
+            const rows = blockedWriteLog.slice(0, 40).map(item =>
+                `<li>${escapeHtml(formatConflictDate(item.date))} ${escapeHtml(item.staff)}さんの指定「${escapeHtml(item.kept || '空欄')}」を守りました`
+                + `（自動生成は「${escapeHtml(item.attempted || '空欄')}」にしようとしました）</li>`).join('');
+            const more = blockedWriteLog.length > 40 ? `<li>ほか${blockedWriteLog.length - 40}件</li>` : '';
+            sections.push({
+                level: 'info',
+                title: `指定を守った回数: ${blockedWriteLog.length}件`,
+                html: `<ul style="margin:.4rem 0 0 1.1rem; padding:0;">${rows}${more}</ul>`
+            });
+        }
+
+        // 2) 指定は入れたが、ルールと食い違っているもの（要確認）
+        if (requestConflictLog.length) {
+            const rows = requestConflictLog.map(item =>
+                `<li>${escapeHtml(formatConflictDate(item.date))} ${escapeHtml(item.staff)}さんの`
+                + `「${escapeHtml(getShiftLabel(item.value))}」指定 — ${escapeHtml(item.reason)}</li>`).join('');
+            sections.push({
+                level: 'warn',
+                title: `指定どおり入れましたが、ルールと合わない箇所: ${requestConflictLog.length}件`,
+                html: `<ul style="margin:.4rem 0 0 1.1rem; padding:0;">${rows}</ul>`
+            });
+        }
+
+        // 3) 自動生成側の問題
+        //    指定が原因のものは 2) で理由つきで出しているので、ここでは重複させない
+        const reportedRequests = new Set(
+            requestConflictLog.map(item => `${item.staff}|${item.date}`)
+        );
+        const messages = (warnings || [])
+            .slice()
+            .filter(w => {
+                if (!w.staff || !w.date) return true;
+                return !reportedRequests.has(`${w.staff}|${w.date}`);
+            })
+            .sort((a, b) => (CONFLICT_PRIORITY[a.type] ?? 9) - (CONFLICT_PRIORITY[b.type] ?? 9))
+            .map(describeWarning)
+            .filter(Boolean);
+        if (messages.length) {
+            const shown = messages.slice(0, 60);
+            const more = messages.length > 60 ? `<li>ほか${messages.length - 60}件</li>` : '';
+            sections.push({
+                level: 'warn',
+                title: `自動生成で守れなかった条件: ${messages.length}件`,
+                html: `<ul style="margin:.4rem 0 0 1.1rem; padding:0;">`
+                    + shown.map(m => `<li>${escapeHtml(m)}</li>`).join('') + more + `</ul>`
+            });
+        }
+
+        if (!sections.length) {
+            panel.style.display = 'none';
+            return;
+        }
+
+        const hasWarn = sections.some(sec => sec.level === 'warn');
+        titleEl.textContent = hasWarn ? '確認したい点' : '生成の記録';
+        titleEl.style.color = hasWarn ? '#b45309' : '#15803d';
+        countEl.textContent = hasWarn ? '（シフト表は作成済みです。下の内容を確認してください）' : '';
+
+        body.innerHTML = sections.map(sec =>
+            `<div style="margin-bottom:.9rem;">`
+            + `<div style="font-weight:700; color:${sec.level === 'warn' ? '#b45309' : '#15803d'};">`
+            + escapeHtml(sec.title) + `</div>${sec.html}</div>`).join('');
+
+        panel.style.display = 'block';
+        body.style.display = 'block';
+        const toggle = document.getElementById('conflict-toggle');
+        if (toggle) toggle.textContent = '閉じる';
+    }
+
     function shuffleInPlace(arr) {
         for (let i = arr.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
@@ -2871,6 +3091,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         generationCount++;
+        resetBlockedWriteLog();
 
         const { start, end } = getPeriod(currentYear, currentTargetMonth);
         const dates = [];
@@ -2892,6 +3113,10 @@ document.addEventListener('DOMContentLoaded', () => {
             fixedPublicDates: new Set(),
             fixedWorkDates: new Set(),
             fixedPublicHolidayDates: new Set(),
+            // 指定セル（希望入力・手動編集）。自動生成は絶対にここを書き換えない
+            lockedDates: new Set(),
+            lockedValues: {},
+            lockedSources: {},
             count1: 0,
             count10: 0,
             count6: 0,
@@ -2917,33 +3142,60 @@ document.addEventListener('DOMContentLoaded', () => {
             return !nextReq && !isWorkValue(nextVal);
         }
 
-        function canHonorWorkRequest(staff, requestedValue, dateObj, dateIdx) {
-            if (!timeSettings[requestedValue] || !timeSettings[requestedValue].enabled) return false;
-            if (staff.isIrregular && requestedValue !== '6') return false;
-            if (!canAssignWorkOnDate(staff, dateKeys, dateIdx)) return false;
+        // 指定は必ず反映する。ただし、ルールと食い違う場合は理由を返して警告に回す。
+        // （以前はここで false を返し、指定を捨てて通常割り当てに戻していた。
+        //   それが「指定した①が⑥や空欄になる」不具合の原因だった）
+        function getWorkRequestConflictReason(staff, requestedValue, dateObj, dateIdx) {
+            if (!timeSettings[requestedValue] || !timeSettings[requestedValue].enabled) {
+                return `${getShiftLabel(requestedValue)}は時間設定でOFFになっています`;
+            }
+            if (staff.isIrregular && requestedValue !== '6') {
+                return 'イレギュラー勤務のため⑥以外は通常入りません';
+            }
+            if (!canAssignWorkOnDate(staff, dateKeys, dateIdx)) {
+                return '連勤の上限を超えます';
+            }
 
             if (requestedValue === '1') {
-                if (!isOneShiftEligible(staff)) return false;
-                if (generateRules.oneNoAfterTen && getYesterdayShift(staff, dateObj) === '10') return false;
-                if (!canPlaceOneWithoutPublicBefore(staff, dateKeys, dateIdx)) return false;
-                if (!canKeepRestAfterRequestedOne(staff, dateIdx)) return false;
+                if (!isOneShiftEligible(staff)) return '①に入れない設定のスタッフです';
+                if (generateRules.oneNoAfterTen && getYesterdayShift(staff, dateObj) === '10') {
+                    return '前日が⑩です（⑩の翌日は①を避ける設定）';
+                }
+                if (!canPlaceOneWithoutPublicBefore(staff, dateKeys, dateIdx)) {
+                    return '前日が休みのため「休→①→休」の1勤になります';
+                }
+                if (!canKeepRestAfterRequestedOne(staff, dateIdx)) {
+                    return '翌日を休みにできません（①の翌日は休みの想定）';
+                }
             }
 
             if (requestedValue === '10') {
-                if (staff.isIrregular) return false;
-                if (getYesterdayShift(staff, dateObj) === '1') return false;
+                if (getYesterdayShift(staff, dateObj) === '1') return '前日が①です';
             }
 
-            return true;
+            return null;
         }
 
         function applyRequestedWork(staff, requestedValue, dateObj, dateIdx, isSpecialTargetDay) {
+            const targetDateStr = formatDateForData(dateObj);
             if (requestedValue === '1') {
-                assignOneShiftWithForcedRest(staff, dates, dateKeys, dateIdx);
+                assignOneShiftWithForcedRest(staff, dates, dateKeys, dateIdx, { requested: true });
             } else {
-                applyShiftValue(staff, formatDateForData(dateObj), requestedValue, isSpecialTargetDay);
+                applyShiftValue(staff, targetDateStr, requestedValue, isSpecialTargetDay, { force: true });
             }
-            staff.fixedWorkDates.add(formatDateForData(dateObj));
+            staff.fixedWorkDates.add(targetDateStr);
+            lockShiftValue(staff, targetDateStr, requestedValue, 'request');
+        }
+
+        /** 休み系の希望（休・公・有休・特休）を反映して固定する */
+        function applyOffRequest(staff, dateStr, req, isSpecialTargetDay) {
+            const value = getExpectedOffValueForRequest(req);
+            applyShiftValue(staff, dateStr, value, isSpecialTargetDay, { force: true });
+            if (value === '公') {
+                staff.fixedPublicDates.add(dateStr);
+                staff.fixedPublicHolidayDates.add(dateStr);
+            }
+            lockShiftValue(staff, dateStr, value, 'request');
         }
 
         // Assign day by day
@@ -2976,22 +3228,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (s.manualOnly) {
                     const req = getStaffRequest(s.name, dateStr);
                     if (isOffRequestValue(req)) {
-                        if (req === '休' || req === '公') {
-                            applyShiftValue(s, dateStr, '公', isSpecialTargetDay);
-                            s.fixedPublicDates.add(dateStr);
-                            s.fixedPublicHolidayDates.add(dateStr);
-                        } else if (req === '特休' || req === '特') {
-                            applyShiftValue(s, dateStr, '特', isSpecialTargetDay);
-                        } else {
-                            applyShiftValue(s, dateStr, '有', isSpecialTargetDay);
-                        }
+                        applyOffRequest(s, dateStr, req, isSpecialTargetDay);
                     } else if (isManualOnlyWorkRequest(req)) {
                         const workValue = getManualOnlyRequestedWorkValue(req);
                         if (!workValue) {
                             applyShiftValue(s, dateStr, '', isSpecialTargetDay);
                             return;
                         }
-                        applyShiftValue(s, dateStr, workValue, isSpecialTargetDay);
+                        applyShiftValue(s, dateStr, workValue, isSpecialTargetDay, { force: true });
+                        lockShiftValue(s, dateStr, workValue, 'request');
                     } else {
                         applyShiftValue(s, dateStr, '', isSpecialTargetDay);
                     }
@@ -3003,24 +3248,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 if (isOffRequestValue(req)) {
-                    if (req === '休' || req === '公') {
-                        // 休み系の希望は自動生成時に公休として反映し、固定する
-                        applyShiftValue(s, dateStr, '公', isSpecialTargetDay);
-                        s.fixedPublicDates.add(dateStr);
-                        s.fixedPublicHolidayDates.add(dateStr);
-                    } else if (req === '特休' || req === '特') {
-                        applyShiftValue(s, dateStr, '特', isSpecialTargetDay);
-                    } else {
-                        applyShiftValue(s, dateStr, '有', isSpecialTargetDay);
-                    }
+                    // 休み系の希望は反映してロックする（自動生成は以後触れない）
+                    applyOffRequest(s, dateStr, req, isSpecialTargetDay);
                 } else if (isRequestedWorkValue(req)) {
-                    if (canHonorWorkRequest(s, req, d, dateIdx)) {
-                        applyRequestedWork(s, req, d, dateIdx, isSpecialTargetDay);
-                        if (req === '1') req1 = Math.max(0, req1 - 1);
-                        if (req === '10') req10_remaining--;
-                    } else if (!((s.fixedPublicDates && s.fixedPublicDates.has(dateStr)) && (s.schedule[dateStr] || '') === '公')) {
-                        available.push(s);
+                    // 条件を満たすかに関わらず必ず反映する。合わない場合は理由を警告に残す。
+                    const conflictReason = getWorkRequestConflictReason(s, req, d, dateIdx);
+                    applyRequestedWork(s, req, d, dateIdx, isSpecialTargetDay);
+                    if (conflictReason) {
+                        requestConflictLog.push({
+                            staff: s.name,
+                            date: dateStr,
+                            value: req,
+                            reason: conflictReason
+                        });
                     }
+                    if (req === '1') req1 = Math.max(0, req1 - 1);
+                    if (req === '10') req10_remaining--;
                 } else {
                     available.push(s);
                 }
@@ -3242,13 +3485,15 @@ document.addEventListener('DOMContentLoaded', () => {
         enforceDailyTenAssignments(staffStats, dates);
         enforceFulltimeCoreDailyCoverage(staffStats, dates, dailyMinimumByDate);
         enforceWeekendTenPriority(staffStats, dates);
-        validateGenerationConflicts(staffStats, dates, dailyMinimumByDate);
         fillBlankWithSixPostProcess(staffStats, dates);
+        // 空欄埋めまで終えた最終状態で検証する（以前は埋める前に検証していた）
+        const conflictWarnings = validateGenerationConflicts(staffStats, dates, dailyMinimumByDate);
 
         lastGeneratedDates = dates;
         lastGeneratedStaffStats = staffStats;
         renderShiftTable(lastGeneratedDates, lastGeneratedStaffStats);
         renderSummaryPanel(lastGeneratedStaffStats);
+        renderConflictPanel(conflictWarnings);
         if (shiftContainer) shiftContainer.style.display = 'block';
         showToast(`シフトを作成しました（${generationCount}回目）`);
     }
@@ -3269,10 +3514,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function getCellClassForStaffDate(staff, dateStr, val) {
         const baseClass = getCellClassByValue(val);
-        if (val === '公' && isFixedPublicHoliday(staff, dateStr)) {
-            return `${baseClass} c-k-fixed`;
-        }
-        return baseClass;
+        const classes = [baseClass];
+        // 指定（希望入力・手動編集）は印刷で赤にするため目印を付ける
+        if (isLockedCell(staff, dateStr)) classes.push('c-designated');
+        if (val === '公' && isFixedPublicHoliday(staff, dateStr)) classes.push('c-k-fixed');
+        return classes.filter(Boolean).join(' ');
     }
 
     function escapeAttr(str) {
@@ -3489,7 +3735,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const dateObj = new Date(`${dateStr}T00:00:00`);
             const dayOfWeek = dateObj.getDay();
             const isHoliday = isHolidayDateStr(dateStr);
-            const isOff = val === '公' || val === '有' || val === '有休' || val === '休';
+            // 土日祝の「休み」には公休・有休・特休すべてを含める
+            const isOff = isOffValue(val);
             if (val === '公') {
                 counts.publicHoliday += 1;
             } else if (val === '有' || val === '有休' || val === '特' || val === '特休') {
@@ -3503,6 +3750,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (dayOfWeek === 0) counts.sundayOff += 1;
                 if (isHoliday) counts.holidayOff += 1;
             }
+        });
+
+        // 公休＋特休（お客さん要望: 合計も見たい）
+        counts.offTotal = counts.publicHoliday + counts.paidLeave;
+        // 開店準備・鍵開けの担当回数 = ①＋③＋⑩（④は含めない）
+        counts.openingTotal = (counts['1'] || 0) + (counts['3'] || 0) + (counts['10'] || 0);
+        // 土日祝の休み合計（同じ日が土曜かつ祝日でも二重に数えない）
+        counts.weekendHolidayOff = 0;
+        Object.entries(staff.schedule || {}).forEach(([dateStr, rawVal]) => {
+            if (!isOffValue(String(rawVal || ''))) return;
+            const dateObj = new Date(`${dateStr}T00:00:00`);
+            if (isWeekendOrHoliday(dateObj, dateStr)) counts.weekendHolidayOff += 1;
         });
 
         return counts;
@@ -3543,9 +3802,22 @@ document.addEventListener('DOMContentLoaded', () => {
         return lines.map(line => `<div>${escapeHtml(line)}</div>`).join('');
     }
 
+    /** ①③⑩に入れる人か（＝「番号の取れる人」）。平均の母集団に使う。 */
+    function isOpeningShiftEligible(staff) {
+        if (!staff || staff.manualOnly) return false;
+        if (staff.isIrregular) return false;   // イレギュラーは⑥専用
+        return true;
+    }
+
     function buildAllStaffSummaryTooltipHtml(staffStats) {
-        const rows = staffStats.map(staff => {
-            const counts = getStaffShiftSummary(staff);
+        const list = staffStats || [];
+        const summaries = list.map(staff => ({ staff: staff, counts: getStaffShiftSummary(staff) }));
+
+        // ③は使われている月だけ列に出す（使わない月は0だけの列が増えて読みにくいため）
+        const showThree = summaries.some(item => (item.counts['3'] || 0) > 0);
+        const showFour = summaries.some(item => (item.counts['4'] || 0) > 0);
+
+        const rows = summaries.map(({ staff, counts }) => {
             const workTotal = SHIFT_TYPES.reduce((sum, type) => sum + (counts[type] || 0), 0);
             const total = workTotal + (counts.publicHoliday || 0) + (counts.paidLeave || 0);
 
@@ -3554,24 +3826,53 @@ document.addEventListener('DOMContentLoaded', () => {
                     <td>${escapeHtml(staff.name)}</td>
                     <td>${workTotal}</td>
                     <td>${counts.publicHoliday || 0}</td>
+                    <td>${counts.paidLeave || 0}</td>
+                    <td class="sum-col">${counts.offTotal || 0}</td>
                     <td>${counts["1"] || 0}</td>
+                    ${showThree ? `<td>${counts["3"] || 0}</td>` : ''}
+                    ${showFour ? `<td>${counts["4"] || 0}</td>` : ''}
                     <td>${counts["6"] || 0}</td>
                     <td>${counts["10"] || 0}</td>
-                    <td>${counts.paidLeave || 0}</td>
+                    <td class="sum-col">${counts.openingTotal || 0}</td>
+                    <td>${counts.weekendHolidayOff || 0}</td>
                     <td>${total}</td>
                 </tr>
             `;
         }).join('');
 
+        // 「番号の取れる人」だけで①③⑩の平均を出す
+        const eligible = summaries.filter(item => isOpeningShiftEligible(item.staff));
+        const openingSum = eligible.reduce((sum, item) => sum + (item.counts.openingTotal || 0), 0);
+        const openingAvg = eligible.length ? (openingSum / eligible.length) : 0;
+        const colsBeforeOpening = 6 + (showThree ? 1 : 0) + (showFour ? 1 : 0) + 2;
+
+        const avgRow = eligible.length ? `
+                <tr class="avg-row">
+                    <td colspan="${colsBeforeOpening}" style="text-align:right;">
+                        ①${showThree ? '③' : ''}⑩の平均（番号の取れる${eligible.length}人）
+                    </td>
+                    <td class="sum-col">${openingAvg.toFixed(1)}</td>
+                    <td colspan="2"></td>
+                </tr>` : '';
+
         return `
             <div class="all-summary-title">スタッフ別集計</div>
-            <div class="all-summary-legend">黒文字の公 = 希望休</div>
+            <div class="all-summary-legend">赤枠の公 = 指定（希望休・手直し）／①③⑩ = 開店準備の担当回数（④は含めない）</div>
             <div class="all-summary-table-wrap">
                 <table class="all-summary-table">
                     <thead>
-                        <tr><th>スタッフ名</th><th>勤務数</th><th>公休数</th><th>1</th><th>6</th><th>10</th><th>特</th><th>合計</th></tr>
+                        <tr>
+                            <th>スタッフ名</th><th>勤務数</th>
+                            <th>公休</th><th>特休</th><th class="sum-col">公+特</th>
+                            <th>1</th>
+                            ${showThree ? '<th>3</th>' : ''}
+                            ${showFour ? '<th>4</th>' : ''}
+                            <th>6</th><th>10</th>
+                            <th class="sum-col">1+${showThree ? '3+' : ''}10</th>
+                            <th>土日祝休</th><th>合計</th>
+                        </tr>
                     </thead>
-                    <tbody>${rows}</tbody>
+                    <tbody>${rows}${avgRow}</tbody>
                 </table>
             </div>
         `;
@@ -3585,7 +3886,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (summaryPrintTableContainer) summaryPrintTableContainer.innerHTML = html;
     }
 
-    function applyCellValue(td, nextVal) {
+    function applyCellValue(td, nextVal, staff, dateStr) {
         const valueEl = td.querySelector('.cell-value');
         if (valueEl) {
             valueEl.textContent = nextVal;
@@ -3593,8 +3894,10 @@ document.addEventListener('DOMContentLoaded', () => {
             td.textContent = nextVal;
         }
         td.className = 'cell';
-        const cls = getCellClassByValue(nextVal);
-        if (cls) td.classList.add(cls);
+        const cls = staff && dateStr
+            ? getCellClassForStaffDate(staff, dateStr, nextVal)
+            : getCellClassByValue(nextVal);
+        String(cls || '').split(' ').filter(Boolean).forEach(c => td.classList.add(c));
     }
 
     function updateStaffSummaryTooltipForRow(row, staff) {
@@ -3616,9 +3919,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const nextVal = editableValues[(currentIdx + 1) % editableValues.length];
 
         const dateObj = lastGeneratedDates.find(d => formatDateForData(d) === dateStr);
-        applyShiftValue(target, dateStr, nextVal, dateObj ? isWeekendOrHoliday(dateObj, dateStr) : false);
+        applyShiftValue(target, dateStr, nextVal, dateObj ? isWeekendOrHoliday(dateObj, dateStr) : false, { force: true });
+        // 手で直した値も「指定」扱いにする（印刷で赤／以後の補正で壊さない）
+        lockShiftValue(target, dateStr, nextVal, 'manual');
 
-        applyCellValue(td, nextVal);
+        applyCellValue(td, nextVal, target, dateStr);
         updateStaffSummaryTooltipForRow(td.closest('tr'), target);
         updateDailyTotalRow();
     }

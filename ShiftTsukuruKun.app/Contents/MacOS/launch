@@ -1,10 +1,34 @@
 #!/bin/zsh
 
-PROJECT_DIR="/Users/ks/シフト作るくん"
+# ---------------------------------------------------------------------------
+# ShiftTsukuruKun.app の中身（Contents/MacOS/launch）
+#
+# 自分の位置から親フォルダをたどってアプリのフォルダを決める。
+#   .../シフト作るくん/ShiftTsukuruKun.app/Contents/MacOS/launch
+#   → 4つ上が「.../シフト作るくん」
+# パスを直書きしないので、フォルダを移動・コピーしても正しい方が起動する。
+# ---------------------------------------------------------------------------
+PROJECT_DIR="${0:A:h:h:h:h}"
 APP_URL="http://127.0.0.1:3000/top.html"
 LOG_FILE="/tmp/shift_tsukuru_kun_server.log"
 
-if ! /usr/bin/curl -fsS "http://127.0.0.1:3000/__shift_dev_ping" >/dev/null 2>&1; then
+show_error() {
+  /usr/bin/osascript -e "display dialog \"$1\" with title \"シフト作るくん\" buttons {\"OK\"} default button 1 with icon stop" >/dev/null 2>&1
+}
+
+if [ ! -f "$PROJECT_DIR/local_dev_server.py" ]; then
+  show_error "アプリ本体が見つかりません。\n\n探した場所:\n$PROJECT_DIR\n\nShiftTsukuruKun.app は「シフト作るくん」フォルダの中に置いてください。"
+  exit 1
+fi
+
+# すでに動いているサーバーが「このフォルダ」のものかを確認する
+RUNNING_ROOT=""
+if /usr/bin/curl -fsS "http://127.0.0.1:3000/__shift_dev_ping" >/dev/null 2>&1; then
+  RUNNING_ROOT=$(/usr/bin/curl -fsS "http://127.0.0.1:3000/__shift_dev_root" 2>/dev/null \
+    | /usr/bin/sed -n 's/.*"root": *"\([^"]*\)".*/\1/p')
+fi
+
+if [ -z "$RUNNING_ROOT" ] || [ "$RUNNING_ROOT" != "$PROJECT_DIR" ]; then
   PIDS=$(/usr/sbin/lsof -tiTCP:3000 -sTCP:LISTEN 2>/dev/null)
   if [ -n "$PIDS" ]; then
     echo "$PIDS" | while read -r PID; do
@@ -14,9 +38,15 @@ if ! /usr/bin/curl -fsS "http://127.0.0.1:3000/__shift_dev_ping" >/dev/null 2>&1
     done
     sleep 1
   fi
+
   cd "$PROJECT_DIR" || exit 1
   nohup /usr/bin/python3 "$PROJECT_DIR/local_dev_server.py" >"$LOG_FILE" 2>&1 &
   sleep 1
+
+  if ! /usr/bin/curl -fsS "http://127.0.0.1:3000/__shift_dev_ping" >/dev/null 2>&1; then
+    show_error "サーバーを起動できませんでした。\n\nフォルダ:\n$PROJECT_DIR\n\n詳しい原因は次のファイルに出ています:\n$LOG_FILE"
+    exit 1
+  fi
 fi
 
 /usr/bin/open "$APP_URL"

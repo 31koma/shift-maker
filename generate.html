@@ -11,6 +11,8 @@
         rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <script src="auth.js?v=20260327a"></script>
+    <script src="config.js"></script>
+    <script src="backup.js"></script>
 </head>
 
 <body>
@@ -30,6 +32,7 @@
                 <a href="staff.html" class="nav-btn">スタッフ</a>
                 <a href="request.html" class="nav-btn">休み希望</a>
                 <a href="generate.html" class="nav-btn active">シフト表</a>
+                <a href="backup.html" class="nav-btn">バックアップ</a>
             </nav>
         </header>
 
@@ -268,6 +271,18 @@
                 <table class="request-table shift-table" id="shift-table">
                     <!-- JSで生成 -->
                 </table>
+            </div>
+
+            <!-- 生成時に見つかった問題点（画面のみ・印刷には出ない） -->
+            <div id="conflict-panel" class="glass-panel hide-on-print" style="display:none; padding:1.25rem; margin-top:1.25rem;">
+                <div style="display:flex; align-items:center; gap:.7rem; flex-wrap:wrap;">
+                    <h3 id="conflict-title" style="font-size:1.05rem; margin:0; color:#b45309;">気になる点</h3>
+                    <span id="conflict-count" style="font-size:.8rem; color:var(--text-muted);"></span>
+                    <div style="flex-grow:1;"></div>
+                    <button type="button" id="conflict-toggle" class="secondary-btn"
+                        style="padding:.3rem .8rem; font-size:.82rem;">閉じる</button>
+                </div>
+                <div id="conflict-body" style="margin-top:.9rem; font-size:.9rem; line-height:1.75;"></div>
             </div>
 
             <div id="summary-print-area" class="summary-print-area print-only">

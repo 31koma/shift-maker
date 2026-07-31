@@ -139,14 +139,18 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         let currentVal = requestData[dateStr][staffName] || '';
-        // Toggle: "" -> "休" -> "有" -> "特" -> "10" -> "1" -> "公" -> "6" -> ""
+        // 切り替え順: "" → 休 → 有 → 特 → 10 → 1 → 6 → ""
+        //
+        // 以前は「休」と「公」が両方あったが、生成結果はどちらもまったく同じ
+        // （どちらも公休になる）ため、押し分ける意味がなく混乱の元だった。
+        // ここでは「休」に一本化する。
+        // 既存データに残っている「公」は、押すと次（有）へ進むので自然に消える。
         if (currentVal === '') currentVal = '休';
-        else if (currentVal === '休') currentVal = '有';
+        else if (currentVal === '休' || currentVal === '公') currentVal = '有';
         else if (currentVal === '有' || currentVal === '有休') currentVal = '特';
         else if (currentVal === '特' || currentVal === '特休') currentVal = '10';
         else if (currentVal === '10') currentVal = '1';
-        else if (currentVal === '1') currentVal = '公';
-        else if (currentVal === '公') currentVal = '6';
+        else if (currentVal === '1') currentVal = '6';
         else currentVal = '';
 
         if (currentVal === '') {

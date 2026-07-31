@@ -1,5 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
-    const MAX_PUBLIC_HOLIDAYS = 8;
+    // 共通設定（config.js）から読む。取得できない場合だけ従来値を使う。
+    const MAX_PUBLIC_HOLIDAYS = (window.SHIFT_CONFIG && window.SHIFT_CONFIG.MAX_PUBLIC_HOLIDAYS) || 8;
     const FULLTIME_CORE_NAMES = new Set(["梶本", "田渕", "田淵", "北窪", "八田"]);
     const defaultStaff = {
         fulltime: [

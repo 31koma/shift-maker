@@ -10,6 +10,8 @@
         href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700;900&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+    <script src="config.js"></script>
+    <script src="backup.js"></script>
     <script src="auth.js"></script>
 </head>
 
@@ -30,6 +32,7 @@
                 <a href="staff.html" class="nav-btn">スタッフ</a>
                 <a href="request.html" class="nav-btn active">休み希望</a>
                 <a href="generate.html" class="nav-btn">シフト表</a>
+                <a href="backup.html" class="nav-btn">バックアップ</a>
             </nav>
         </header>
 
@@ -53,6 +56,16 @@
                         <polyline points="9 18 15 12 9 6"></polyline>
                     </svg>
                 </button>
+            </div>
+
+            <div class="glass-panel" style="padding:.9rem 1.2rem; margin-bottom:1rem; font-size:.88rem; line-height:1.8;">
+                セルを押すたびに
+                <strong>休 → 有 → 特 → 10 → 1 → 6 → （空欄）</strong>
+                の順に変わります。
+                <span style="color:var(--text-muted);">
+                    休＝公休／有＝有休／特＝特休／数字＝その区分での出勤指定。
+                    ここで入れた指定は、自動生成では変更されません。
+                </span>
             </div>
 
             <!-- 希望入力テーブル -->
