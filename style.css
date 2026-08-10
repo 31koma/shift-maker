@@ -1763,7 +1763,13 @@ body {
     }
 
     .shift-table {
-        width: 100%;
+        /* 紙の幅いっぱいに広げる。
+           以前は日付セルを34px固定にしていたため、表の幅が紙と合わず
+           Chrome では縮小されて右に余白が出、Safari（@page非対応）では
+           はみ出したり小さくなったりしていた。
+           固定幅をやめて table-layout: fixed の均等割りにすると、
+           A4でもA3でも・どのブラウザでも紙幅ちょうどに割り付けられる。 */
+        width: 100% !important;
         border-collapse: collapse;
         table-layout: fixed;
         font-size: 12px;
@@ -1773,9 +1779,9 @@ body {
 
     .shift-table th:not(.sticky-col),
     .shift-table td:not(.sticky-col) {
-        width: 34px;
-        min-width: 34px;
-        max-width: 34px;
+        width: auto;
+        min-width: 0;
+        max-width: none;
     }
 
     .shift-table th {
@@ -1937,9 +1943,13 @@ body {
         break-inside: avoid !important;
     }
 
+    /* 用紙はA4横が基本（お客さんの提出書類がA4のため）。
+       Chrome/Edge はこの指定を読んで印刷ダイアログの初期値にする。
+       Safari はこの指定を読めないので、印刷時に「横向き」を選ぶこと。
+       A3で刷りたいときはダイアログでA3を選べば、表は紙幅いっぱいに広がる。 */
     @page {
-        size: A3 landscape;
-        margin: 0.9cm;
+        size: A4 landscape;
+        margin: 0.7cm;
     }
 }
 

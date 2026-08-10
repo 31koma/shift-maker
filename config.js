@@ -15,7 +15,7 @@ window.SHIFT_CONFIG = {
     // 本番へ push するときは、ここの2行を必ず書き換えること。
     // 画面側は各ページのフッターにある <span class="app-version"></span> に
     // 下の applyVersionLabel が流し込む（HTMLを1枚ずつ直さなくてよい）。
-    APP_VERSION: '2.5.1',
+    APP_VERSION: '2.5.2',
     APP_UPDATED: '2026-08-10',
 
     // 1人あたりに設定できる公休の上限（スタッフ画面の入力欄の上限）
