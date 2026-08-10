@@ -15,8 +15,8 @@ window.SHIFT_CONFIG = {
     // 本番へ push するときは、ここの2行を必ず書き換えること。
     // 画面側は各ページのフッターにある <span class="app-version"></span> に
     // 下の applyVersionLabel が流し込む（HTMLを1枚ずつ直さなくてよい）。
-    APP_VERSION: '2.3.0',
-    APP_UPDATED: '2026-07-31',
+    APP_VERSION: '2.5.0',
+    APP_UPDATED: '2026-08-10',
 
     // 1人あたりに設定できる公休の上限（スタッフ画面の入力欄の上限）
     // 実運用は7〜8日。12は「選べる枠」として持たせているだけ。
@@ -82,8 +82,12 @@ window.SHIFT_CONFIG = {
     // 連勤の下限・上限（1勤禁止、5連勤は月1回まで許容）
     MIN_CONSECUTIVE_WORK: 2,
     MAX_CONSECUTIVE_WORK: 4,
-    // 行事の日に③へ入れる既定人数（月行事画面で日ごとに上書きできる）
-    THIRD_SHIFT_DEFAULT: 2
+    // その人だけの連勤上限（共通の上限より短くする人）。
+    // 2026-08-09 お客さん要望: 太田さんは4連勤をやめて3連勤まで。
+    MAX_CONSECUTIVE_BY_STAFF: { "太田": 3 },
+    // ③は自動では入れない（2026-08-09 お客さん要望）。
+    // 月行事画面で日ごとに人数を入れた行事の日だけ、その人数ちょうどを入れる。
+    THIRD_SHIFT_DEFAULT: 0
 };
 
 // フッターのバージョン表示を埋める。

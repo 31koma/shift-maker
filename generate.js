@@ -34,7 +34,7 @@ document.addEventListener('DOMContentLoaded', () => {
         tenShiftCount: 3,
         weekdayMinimum: 11,
         weekendMinimum: 10,
-        thirdShiftDefault: 2,
+        thirdShiftDefault: 0,   // ③は自動では入れない（月行事画面で日ごとに指定）
         minConsecutiveWork: 2,
         maxConsecutiveWork: 4,
         allowOverConsecutiveOnce: true,
@@ -626,7 +626,6 @@ document.addEventListener('DOMContentLoaded', () => {
         setVal('rule-10-count', generateRules.tenShiftCount);
         setVal('rule-weekday-min', getRuleValue('weekdayMinimum', conf.WEEKDAY_MINIMUM, 11));
         setVal('rule-weekend-min', getRuleValue('weekendMinimum', conf.WEEKEND_MINIMUM, 10));
-        setVal('rule-third-count', getRuleValue('thirdShiftDefault', conf.THIRD_SHIFT_DEFAULT, 2));
         setVal('rule-min-consecutive', getRuleValue('minConsecutiveWork', conf.MIN_CONSECUTIVE_WORK, 2));
         setVal('rule-max-consecutive', getRuleValue('maxConsecutiveWork', conf.MAX_CONSECUTIVE_WORK, 4));
         setChecked('rule-ten-random', generateRules.tenFulltimeRandom === true);
@@ -682,7 +681,8 @@ document.addEventListener('DOMContentLoaded', () => {
             tenShiftCount: getNum('rule-10-count', generateRules.tenShiftCount),
             weekdayMinimum: getNum('rule-weekday-min', 11),
             weekendMinimum: getNum('rule-weekend-min', 10),
-            thirdShiftDefault: getNum('rule-third-count', 2),
+            // ③は自動では入れないため、既定人数の設定は廃止（月行事画面で日ごとに指定）
+            thirdShiftDefault: 0,
             minConsecutiveWork: minConsecutive,
             maxConsecutiveWork: maxConsecutive,
             tenFulltimeRandom: getChk('rule-ten-random', false),
@@ -866,26 +866,36 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const weekdayMin = getRuleValue('weekdayMinimum', conf.WEEKDAY_MINIMUM, 11);
         const weekendMin = getRuleValue('weekendMinimum', conf.WEEKEND_MINIMUM, 10);
-        const thirdDefault = getRuleValue('thirdShiftDefault', conf.THIRD_SHIFT_DEFAULT, 2);
         const minRun = getRuleValue('minConsecutiveWork', conf.MIN_CONSECUTIVE_WORK, 2);
         const maxRun = getRuleValue('maxConsecutiveWork', conf.MAX_CONSECUTIVE_WORK, 4);
         const allowOnce = generateRules.allowOverConsecutiveOnce !== false;
         const usingOld = generateRules.useOldEngine === true || conf.USE_NEW_ENGINE === false;
+        const perStaffRun = conf.MAX_CONSECUTIVE_BY_STAFF || {};
+        const perStaffRunText = Object.keys(perStaffRun)
+            .filter(n => activeStaff.some(s => s.name === n))
+            .map(n => `${n}さんは${perStaffRun[n]}日まで`).join('、');
+        const weekendLightNames = [...(staffData.fulltime || []), ...(staffData.parttime || []), ...(staffData.irregular || [])]
+            .filter(s => s.weekendLight && activeStaff.some(a => a.name === s.name))
+            .map(s => s.name);
 
         const lines = [
-            `・出勤人数: 平日${weekdayMin}人以上、土日祝${weekendMin}人以上`,
-            `・連勤: ${minRun}〜${maxRun}日` + (allowOnce ? `（どうしても組めないときだけ、月1回まで${maxRun + 1}日を許す）` : '（超えない）'),
+            `・出勤人数: 平日${weekdayMin}人以上、土日祝${weekendMin}人以上。月行事ページで日ごとの人数も指定できる（人数多めチェックだけの日は＋1人）`,
+            `・連勤: ${minRun}〜${maxRun}日` + (allowOnce ? `（どうしても組めないときだけ、月1回まで上限+1日を許す）` : '（超えない）')
+                + (perStaffRunText ? `。例外: ${perStaffRunText}` : ''),
             `・①: 1日${generateRules.oneShiftCount}人。入れるのは${oneCount}人（スタッフ画面で「①に参加」を付けた人）。翌日は必ず休み`,
             `・⑩: 1日${generateRules.tenShiftCount}人。入れるのは${tenCount}人。3人全員がパートにはしない`
                 + (generateRules.tenFulltimeRandom === true
                     ? '（正社員の人数はランダム）'
-                    : '（正社員1人が理想。足りないときだけ2人3人）'),
-            `・③: 行事の日だけ${thirdDefault}人` + (thirdNames.length ? `。入れるのは ${thirdNames.join('・')} さん` : ''),
+                    : '（正社員1人が基本。均等化や人繰りで2人3人になる日もある）'),
+            '・③: 自動では入れない。月行事ページで③の人数を入れた行事の日だけ、その人数ちょうど'
+                + (thirdNames.length ? `。入れるのは ${thirdNames.join('・')} さん` : ''),
             '・④: 岡崎さんの通常勤務（⑥の代わり）。行事の日も④のまま',
-            `・公休: 設定した日数ちょうど。誕生日休「誕」は公休に含む（誕生日を登録済み ${birthdayCount}人）`,
-            '・特休・有休: 公休とは別枠。入れたぶん休みが増える',
+            `・公休: 公休＋特休＝設定した日数ちょうど。誕生日休「誕」も公休に含む（誕生日を登録済み ${birthdayCount}人）`,
+            '・有休: 別枠。入れたぶん休みが増える',
             '・希望と手直し: 生成し直しても必ずそのまま残る',
-            '・公平さ: ①は入る人全員で、⑩は正社員どうし・パートどうしで、回数を均します'
+            '・公平さ: ①③⑩の合計回数を、番号を取れる人全員で均します（⑩しか取れない人は⑩が多めになります）',
+            '・土日祝: 出勤回数を全員で均します'
+                + (weekendLightNames.length ? `（土日祝少なめ: ${weekendLightNames.join('・')}さんは除く）` : '（スタッフ画面の「土日祝少なめ」で除外できます）')
         ];
         if (usingOld) {
             lines.unshift('⚠ いまは「以前の作り方」で組んでいます。上のルールのうち、連勤・誕生日休・③④は効きません');
@@ -3229,20 +3239,37 @@ document.addEventListener('DOMContentLoaded', () => {
             canWorkThirdShift: inSet(conf.THIRD_SHIFT_STAFF, s.name),
             usesFourthShift: inSet(conf.FOURTH_SHIFT_STAFF, s.name),
             allowsConsecutiveTen: inSet(conf.CONSECUTIVE_TEN_ALLOWED, s.name),
+            // スタッフ画面の「土日祝少なめでよい」チェック
+            weekendLight: !!findRaw(s.name).weekendLight,
+            // その人だけの連勤上限（太田さん＝3日）。0なら共通ルール
+            maxConsecutive: (conf.MAX_CONSECUTIVE_BY_STAFF && conf.MAX_CONSECUTIVE_BY_STAFF[s.name]) || 0,
             pubHolidays: s.pubHolidays,
             birthday: findRaw(s.name).birthday || ''
         }));
     }
 
     function buildThirdShiftByDate(dateKeys) {
-        // 月行事画面で日ごとに人数を入れられるようにする準備。
-        // 今は eventData の thirdShiftCount を見るだけ（未入力なら既定値）。
+        // 月行事画面で日ごとに入力した③の人数。
+        // 2026-08-09 お客さん要望: ③は自動では入れない。ここで人数が入った日だけ使う。
         const map = {};
         dateKeys.forEach(dateStr => {
             const ev = eventData[dateStr];
             if (ev && ev.thirdShiftCount !== undefined && ev.thirdShiftCount !== null && ev.thirdShiftCount !== '') {
                 const n = parseInt(ev.thirdShiftCount, 10);
                 if (!isNaN(n)) map[dateStr] = Math.max(0, n);
+            }
+        });
+        return map;
+    }
+
+    /** 月行事画面で日ごとに入力した「この日の最低出勤人数」 */
+    function buildMinimumByDate(dateKeys) {
+        const map = {};
+        dateKeys.forEach(dateStr => {
+            const ev = eventData[dateStr];
+            if (ev && ev.minWorkers !== undefined && ev.minWorkers !== null && ev.minWorkers !== '') {
+                const n = parseInt(ev.minWorkers, 10);
+                if (!isNaN(n) && n > 0) map[dateStr] = n;
             }
         });
         return map;
@@ -3268,8 +3295,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     maxConsecutiveWork: getRuleValue('maxConsecutiveWork', conf.MAX_CONSECUTIVE_WORK, 4),
                     allowFiveConsecutiveOnce: generateRules.allowOverConsecutiveOnce !== false,
                     tenFulltimeRandom: generateRules.tenFulltimeRandom === true,
-                    thirdShiftDefault: getRuleValue('thirdShiftDefault', conf.THIRD_SHIFT_DEFAULT, 0),
+                    // ③は自動では入れない（2026-08-09 お客さん要望）。
+                    // 月行事画面で人数を入れた日だけ、その人数ちょうどを入れる。
+                    thirdShiftDefault: 0,
                     thirdShiftByDate: buildThirdShiftByDate(dateKeys),
+                    // 月行事画面の日ごとの人数指定。人数多めチェックだけの日は既定+1人
+                    minimumByDate: buildMinimumByDate(dateKeys),
+                    busyDayBoost: 1,
                     seed: Math.floor(Math.random() * 2147483647)
                 }
             });
@@ -3280,13 +3312,18 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!result || !result.schedule) return null;
 
         // 目安人数・行事日フラグ（画面の集計や表示で使う）
+        const minimumOverrides = buildMinimumByDate(dateKeys);
         dateKeys.forEach(dateStr => {
             const d = new Date(dateStr + 'T00:00:00');
             const weekendish = isWeekendOrHoliday(d, dateStr);
-            dailyMinimumByDate[dateStr] = weekendish
+            const busy = isBusyDay(eventData[dateStr] || {});
+            const base = weekendish
                 ? getRuleValue('weekendMinimum', conf.WEEKEND_MINIMUM, 10)
                 : getRuleValue('weekdayMinimum', conf.WEEKDAY_MINIMUM, 11);
-            busyDayByDate[dateStr] = isBusyDay(eventData[dateStr] || {});
+            dailyMinimumByDate[dateStr] = minimumOverrides[dateStr] !== undefined
+                ? minimumOverrides[dateStr]
+                : base + (busy ? 1 : 0);
+            busyDayByDate[dateStr] = busy;
         });
 
         // エンジンの結果を盤面へ。指定セルは先にロックしてから force で書く
@@ -3810,8 +3847,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (val === '6') return 'c-6';
         if (val === '10') return 'c-10';
         if (/^(?:[2-5]|[7-9])$/.test(val)) return 'c-n';
-        if (val === '休' || val === '有休' || val === '有' || val === '特休' || val === '特') return 'c-v';
-        if (val === '公') return 'c-k';
+        if (val === '有休' || val === '有' || val === '特休' || val === '特') return 'c-v';
+        if (val === '公' || val === '休') return 'c-k';   // 「休」は「公」と同じ扱い
         return '';
     }
 
@@ -4016,7 +4053,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function getEditableValues(currentVal) {
         const values = SHIFT_TYPES.filter(type => timeSettings[type] && timeSettings[type].enabled);
-        values.push('公', '有', '');
+        values.push('公', '有', '特', '');
 
         if (currentVal && !values.includes(currentVal)) {
             values.unshift(currentVal);
@@ -4026,8 +4063,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function getStaffShiftSummary(staff) {
         const counts = {
-            publicHoliday: 0,
-            paidLeave: 0,
+            publicHoliday: 0,   // 公・誕
+            specialLeave: 0,    // 特（公休の内数として扱う）
+            paidLeave: 0,       // 有（別枠）
             saturdayOff: 0,
             sundayOff: 0,
             holidayOff: 0
@@ -4045,9 +4083,11 @@ document.addEventListener('DOMContentLoaded', () => {
             // 土日祝の「休み」には公休・有休・特休すべてを含める
             const isOff = isOffValue(val);
             // 誕生日休は公休に含める（お客さん確認済み）
-            if (val === '公' || val === '誕') {
+            if (val === '公' || val === '誕' || val === '休') {
                 counts.publicHoliday += 1;
-            } else if (val === '有' || val === '有休' || val === '特' || val === '特休') {
+            } else if (val === '特' || val === '特休') {
+                counts.specialLeave += 1;
+            } else if (val === '有' || val === '有休') {
                 counts.paidLeave += 1;
             } else if (SHIFT_TYPES.includes(val)) {
                 counts[val] += 1;
@@ -4060,8 +4100,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        // 公休＋特休（お客さん要望: 合計も見たい）
-        counts.offTotal = counts.publicHoliday + counts.paidLeave;
+        // 公休＋特休（＝スタッフ画面で設定した公休数になるはずの数）
+        counts.offTotal = counts.publicHoliday + counts.specialLeave;
         // 開店準備・鍵開けの担当回数 = ①＋③＋⑩（④は含めない）
         counts.openingTotal = (counts['1'] || 0) + (counts['3'] || 0) + (counts['10'] || 0);
         // 土日祝の休み合計（同じ日が土曜かつ祝日でも二重に数えない）
@@ -4091,6 +4131,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         const lines = [
             `公：${counts.publicHoliday}`,
+            `特：${counts.specialLeave}`,
             `有：${counts.paidLeave}`,
             `${shiftLabelMap["1"]}：${counts["1"]}`
         ];
@@ -4127,15 +4168,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const rows = summaries.map(({ staff, counts }) => {
             const workTotal = SHIFT_TYPES.reduce((sum, type) => sum + (counts[type] || 0), 0);
-            const total = workTotal + (counts.publicHoliday || 0) + (counts.paidLeave || 0);
+            const total = workTotal + (counts.publicHoliday || 0) + (counts.specialLeave || 0) + (counts.paidLeave || 0);
 
             return `
                 <tr>
                     <td>${escapeHtml(staff.name)}</td>
                     <td>${workTotal}</td>
                     <td>${counts.publicHoliday || 0}</td>
-                    <td>${counts.paidLeave || 0}</td>
+                    <td>${counts.specialLeave || 0}</td>
                     <td class="sum-col">${counts.offTotal || 0}</td>
+                    <td>${counts.paidLeave || 0}</td>
                     <td>${counts["1"] || 0}</td>
                     ${showThree ? `<td>${counts["3"] || 0}</td>` : ''}
                     ${showFour ? `<td>${counts["4"] || 0}</td>` : ''}
@@ -4152,7 +4194,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const eligible = summaries.filter(item => isOpeningShiftEligible(item.staff));
         const openingSum = eligible.reduce((sum, item) => sum + (item.counts.openingTotal || 0), 0);
         const openingAvg = eligible.length ? (openingSum / eligible.length) : 0;
-        const colsBeforeOpening = 6 + (showThree ? 1 : 0) + (showFour ? 1 : 0) + 2;
+        const colsBeforeOpening = 7 + (showThree ? 1 : 0) + (showFour ? 1 : 0) + 2;
 
         const avgRow = eligible.length ? `
                 <tr class="avg-row">
@@ -4165,13 +4207,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         return `
             <div class="all-summary-title">スタッフ別集計</div>
-            <div class="all-summary-legend">赤枠の公 = 指定（希望休・手直し）／①③⑩ = 開店準備の担当回数（④は含めない）</div>
+            <div class="all-summary-legend">赤枠の公 = 指定（希望休・手直し）／公+特 = スタッフ画面の公休数どおりになる数／有 = 有休（別枠）／①③⑩ = 開店準備の担当回数（④は含めない）</div>
             <div class="all-summary-table-wrap">
                 <table class="all-summary-table">
                     <thead>
                         <tr>
                             <th>スタッフ名</th><th>勤務数</th>
-                            <th>公休</th><th>特休</th><th class="sum-col">公+特</th>
+                            <th>公休</th><th>特休</th><th class="sum-col">公+特</th><th>有休</th>
                             <th>1</th>
                             ${showThree ? '<th>3</th>' : ''}
                             ${showFour ? '<th>4</th>' : ''}
@@ -4305,7 +4347,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 dates.forEach(d => {
                     const dateStr = formatDateForData(d);
                     const rawVal = s.schedule[dateStr] || '';
-                    const val = rawVal === '休' ? '有' : rawVal;
+                    // 「休」は「公」に統一して表示する（梅林園の提出書類が公休表示のため）
+                    const val = rawVal === '休' ? '公' : rawVal;
                     const cls = getCellClassForStaffDate(s, dateStr, val);
 
                     // In print, colors are handled well by browsers if styled nicely, or we just rely on text.

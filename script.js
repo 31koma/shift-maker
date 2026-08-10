@@ -46,7 +46,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const modalDateDisplay = document.getElementById('modal-date-display');
     const eventNameInput = document.getElementById('event-name');
     const isBusyDayInput = document.getElementById('is-busy-day');
+    const minWorkersInput = document.getElementById('min-workers');
+    const thirdCountInput = document.getElementById('third-count');
     const toast = document.getElementById('toast');
+
+    // 数字入力欄の値。空欄や読めない値は null（＝指定なし）を返す
+    function readNumberInput(input) {
+        if (!input) return null;
+        const raw = String(input.value || '').trim();
+        if (raw === '') return null;
+        const n = parseInt(raw, 10);
+        return isNaN(n) ? null : n;
+    }
 
     // --- Init ---
     init();
@@ -138,8 +149,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 badgesHtml += `<div class="event-badge">${formatEventNameForDisplay(dayData.eventName)}</div>`;
             }
             const isBusyDay = !!dayData.busyDay || !!dayData.isEventDay;
-            if (isBusyDay) {
+            const minWorkers = (dayData.minWorkers !== undefined && dayData.minWorkers !== null && dayData.minWorkers !== '')
+                ? parseInt(dayData.minWorkers, 10) : null;
+            const thirdCount = (dayData.thirdShiftCount !== undefined && dayData.thirdShiftCount !== null && dayData.thirdShiftCount !== '')
+                ? parseInt(dayData.thirdShiftCount, 10) : null;
+            if (minWorkers !== null && !isNaN(minWorkers)) {
+                badgesHtml += `<div class="people-badge">出勤${minWorkers}人〜</div>`;
+            } else if (isBusyDay) {
                 badgesHtml += `<div class="people-badge">人数多め</div>`;
+            }
+            if (thirdCount !== null && !isNaN(thirdCount) && thirdCount > 0) {
+                badgesHtml += `<div class="people-badge">③ ${thirdCount}人</div>`;
             }
             cell.innerHTML = `
                 <div class="cell-header">
@@ -195,6 +215,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const dayData = eventData[dateStr] || { eventName: '', busyDay: false };
         eventNameInput.value = dayData.eventName;
         isBusyDayInput.checked = !!dayData.busyDay || !!dayData.isEventDay;
+        if (minWorkersInput) {
+            minWorkersInput.value = (dayData.minWorkers !== undefined && dayData.minWorkers !== null && dayData.minWorkers !== '')
+                ? dayData.minWorkers : '';
+        }
+        if (thirdCountInput) {
+            thirdCountInput.value = (dayData.thirdShiftCount !== undefined && dayData.thirdShiftCount !== null && dayData.thirdShiftCount !== '')
+                ? dayData.thirdShiftCount : '';
+        }
 
         editModal.classList.remove('hidden');
         setTimeout(() => editModal.querySelector('.modal-content').classList.add('show'), 10);
@@ -210,13 +238,21 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!selectedDateStr) return;
 
         const eName = eventNameInput.value.trim().slice(0, MAX_EVENT_NAME_LENGTH);
-        const isBusyDay = !!isBusyDayInput.checked;
+        let minWorkers = readNumberInput(minWorkersInput);
+        if (minWorkers !== null && minWorkers < 1) minWorkers = null;
+        let thirdCount = readNumberInput(thirdCountInput);
+        if (thirdCount !== null && thirdCount < 0) thirdCount = 0;
+        // ③の人数を入れた日は行事の日（＝人数多め）として扱う
+        const isBusyDay = !!isBusyDayInput.checked || (thirdCount !== null && thirdCount > 0);
 
-        if (eName || isBusyDay) {
-            eventData[selectedDateStr] = {
+        if (eName || isBusyDay || minWorkers !== null || thirdCount !== null) {
+            const dayData = {
                 eventName: eName,
                 busyDay: isBusyDay
             };
+            if (minWorkers !== null) dayData.minWorkers = minWorkers;
+            if (thirdCount !== null) dayData.thirdShiftCount = thirdCount;
+            eventData[selectedDateStr] = dayData;
         } else {
             delete eventData[selectedDateStr];
         }
@@ -231,6 +267,8 @@ document.addEventListener('DOMContentLoaded', () => {
     function clearModal() {
         eventNameInput.value = '';
         isBusyDayInput.checked = false;
+        if (minWorkersInput) minWorkersInput.value = '';
+        if (thirdCountInput) thirdCountInput.value = '';
     }
 
     function showToast(message) {

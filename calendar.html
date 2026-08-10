@@ -116,8 +116,28 @@
                 <div class="form-group">
                     <label style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0;">
                         <input type="checkbox" id="is-busy-day" style="width:18px; height:18px;">
-                        人数多め
+                        人数多め（行事の日）
                     </label>
+                    <p style="font-size:0.78rem; color:var(--text-muted); margin:0.3rem 0 0;">
+                        チェックだけの日は、通常の最低人数より1人多めにします。</p>
+                </div>
+
+                <div class="form-group">
+                    <label for="min-workers">この日の出勤人数（最低）</label>
+                    <input type="number" id="min-workers" class="premium-input" min="1" max="30"
+                        placeholder="空欄＝通常どおり">
+                    <p style="font-size:0.78rem; color:var(--text-muted); margin:0.3rem 0 0;">
+                        行事本番は多め・前日は少し多め、のように日ごとに人数を指定できます。
+                        空欄なら 平日11人・土日祝10人（人数多めチェックの日は＋1人）。</p>
+                </div>
+
+                <div class="form-group">
+                    <label for="third-count">③（7:00〜15:30）に入れる人数</label>
+                    <input type="number" id="third-count" class="premium-input" min="0" max="8"
+                        placeholder="空欄＝③を使わない">
+                    <p style="font-size:0.78rem; color:var(--text-muted); margin:0.3rem 0 0;">
+                        ③は自動では入りません。ここで人数を入れた日だけ、その人数ちょうど入ります。
+                        人数を入れると「人数多め」も自動でONになります。</p>
                 </div>
 
             </div>

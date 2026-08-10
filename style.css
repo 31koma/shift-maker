@@ -885,9 +885,9 @@ body {
 .staff-settings-row {
     grid-column: 1 / 2;
     display: grid;
-    /* ①に参加 / 公休 / 誕生日 の3列。
+    /* ①に参加 / 土日祝 / 公休 / 誕生日 の4列。
        カード幅に収まるよう minmax(0, 1fr) で縮めて、はみ出さないようにする。 */
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 0.5rem;
     margin-left: 1.6rem;
     min-width: 0;

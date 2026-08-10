@@ -301,6 +301,34 @@ document.addEventListener('DOMContentLoaded', () => {
             oneCol.appendChild(oneShiftLabel);
             settingsRow.appendChild(oneCol);
 
+            // 土日祝の出勤を少なめでよい人（土日祝の均等化から外す）
+            const weekendCol = document.createElement('div');
+            weekendCol.className = 'staff-setting-block';
+            const weekendTitle = document.createElement('span');
+            weekendTitle.className = 'staff-setting-title';
+            weekendTitle.textContent = '土日祝';
+            weekendCol.appendChild(weekendTitle);
+
+            const weekendLabel = document.createElement('label');
+            weekendLabel.className = 'staff-inline-check';
+            weekendLabel.title = 'チェックすると、土日祝の出勤を均等にする対象から外し、土日祝の出勤を少なめにします。';
+
+            const weekendInput = document.createElement('input');
+            weekendInput.type = 'checkbox';
+            weekendInput.checked = !!staff.weekendLight;
+            weekendInput.addEventListener('change', (e) => {
+                staff.weekendLight = e.target.checked;
+                saveData();
+            });
+
+            const weekendText = document.createElement('span');
+            weekendText.textContent = '少なめでよい';
+
+            weekendLabel.appendChild(weekendInput);
+            weekendLabel.appendChild(weekendText);
+            weekendCol.appendChild(weekendLabel);
+            settingsRow.appendChild(weekendCol);
+
             // 誕生日（公休に含めて必ず休みにする日）
             const birthdayCol = document.createElement('div');
             birthdayCol.className = 'staff-setting-block';

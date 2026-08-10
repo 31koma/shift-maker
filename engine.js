@@ -49,6 +49,11 @@
     const isWorkCode = c => c >= WORK_MIN;
     const isOffCode = c => c < WORK_MIN;
     const countsAsPublic = c => c === C.PUBLIC || c === C.BIRTHDAY;
+    // 公休の「日数枠」に数える休み（公休・誕生日休・特休）。
+    // 2026-08-09 お客さん要望: 公休＋特休＝スタッフ画面の公休数にする。
+    // 特休を別枠で足すと、そのぶん休みが増えすぎてしまうため。
+    // （有休はこれまでどおり別枠。入れたぶん休みが増える）
+    const countsTowardPublicQuota = c => c === C.PUBLIC || c === C.BIRTHDAY || c === C.SPECIAL;
     // 希望で入れた休み（この翌日は⑩を入れない）
     const isFixedOffCode = c => c === C.PUBLIC || c === C.PAID || c === C.SPECIAL;
 
@@ -110,8 +115,19 @@
         // 公平さ。平均からのズレの2乗に掛ける。
         // 「一番多い人と一番少ない人の差」だけを見ていたときは、
         // 真ん中の人をどう動かしても点数が変わらず、探索が方向を見失っていた。
-        tenFairness: 260,           // ⑩の回数の偏り（正社員どうし・パートどうしで比べる）
-        oneFairness: 320,           // ①の回数の偏り（①に入る人全員で比べる）
+        //
+        // 2026-08-09 お客さん要望で主役を交代:
+        //   「①③⑩の合計を、取れる人全員で均等に。⑩しか取れない人は⑩が多くなってよい」
+        // 種類ごとの公平さは、合計の公平さを壊さない範囲での味付けに格下げした。
+        openingFairness: 320,       // ①③⑩の合計回数の偏り（①③⑩のどれかを取れる人全員で比べる）
+        weekendFairness: 200,       // 土日祝の出勤回数の偏り（全員で比べる）
+        // 「土日祝少なめ」の人は、回数にこの日数分の下駄を履かせて比べる。
+        // ＝結果として、まわりよりこの日数ぶん土日祝出勤が少なくなる。
+        // 母集団から外すだけにすると「公平コストのかからない余り要員」になって
+        // 逆に土日祝へ回されてしまった（検証で確認済み）。
+        weekendLightOffset: 2,
+        tenFairness: 80,            // ⑩の回数の偏り（正社員どうし・パートどうしで比べる）
+        oneFairness: 80,            // ①の回数の偏り（①に入る人全員で比べる）
         blankCell: 25               // 空欄を作らない
     };
 
@@ -138,6 +154,11 @@
             tenFulltimeRandom: false,
             thirdShiftByDate: {},
             thirdShiftDefault: 0,
+            // 日ごとの最低出勤人数の指定（月行事画面で入力）。{'2026-09-05': 15} の形。
+            // 指定がある日は平日/土日祝の既定より優先する。
+            minimumByDate: {},
+            // 「人数多め」チェックだけ付いていて人数の指定がない日は、既定より何人多くするか
+            busyDayBoost: 1,
             iterations: 60000,
             restarts: 3,
             seed: 20260731
@@ -155,6 +176,11 @@
             canWorkThirdShift: !!s.canWorkThirdShift,
             usesFourthShift: !!s.usesFourthShift,
             allowsConsecutiveTen: !!s.allowsConsecutiveTen,
+            // 「土日祝は少なめでかまわない」の人（スタッフ画面のチェック）。
+            // 土日祝の均等化の母集団から外し、控えめに土日祝出勤を減らす。
+            weekendLight: !!s.weekendLight,
+            // その人だけの連勤上限（0なら共通ルールのまま）。太田さん＝3日など。
+            maxConsecutive: Number(s.maxConsecutive) || 0,
             pubHolidays: Number(s.pubHolidays) || 0,
             birthday: s.birthday || ''
         }));
@@ -162,16 +188,30 @@
 
         const minimum = new Int32Array(nD);
         const busyDay = new Uint8Array(nD);
+        const weekendish = new Uint8Array(nD);
         const events = input.events || {};
         for (let d = 0; d < nD; d++) {
             const key = dates[d];
             const day = new Date(key + 'T00:00:00').getDay();
-            const weekendish = day === 0 || day === 6 || isHolidayDate(key);
-            minimum[d] = weekendish ? rules.weekendMinimum : rules.weekdayMinimum;
-            busyDay[d] = (events[key] && events[key].busyDay) ? 1 : 0;
+            weekendish[d] = (day === 0 || day === 6 || isHolidayDate(key)) ? 1 : 0;
+            // 行事の日: 「人数多め」チェックか、③の人数が入っている日
+            const thirdByDate = rules.thirdShiftByDate[key];
+            busyDay[d] = ((events[key] && events[key].busyDay) || (thirdByDate !== undefined && thirdByDate > 0)) ? 1 : 0;
+
+            // その日の最低出勤人数。
+            //   月行事画面の人数指定 ＞ 人数多めチェック(既定+busyDayBoost) ＞ 平日/土日祝の既定
+            const base = weekendish[d] ? rules.weekendMinimum : rules.weekdayMinimum;
+            const override = rules.minimumByDate[key];
+            if (override !== undefined && override !== null && override !== '' && !isNaN(Number(override)) && Number(override) > 0) {
+                minimum[d] = Number(override);
+            } else {
+                minimum[d] = base + (busyDay[d] ? rules.busyDayBoost : 0);
+            }
         }
 
-        // 行事の日ごとの③の必要人数
+        // 行事の日ごとの③の必要人数。
+        // 2026-08-09 お客さん要望: ③は自動では入れない。月行事画面で人数を
+        // 指定した日だけ、その人数ちょうどを入れる（行事のない月は③ゼロ）。
         const thirdNeed = new Int32Array(nD);
         for (let d = 0; d < nD; d++) {
             if (!busyDay[d]) { thirdNeed[d] = 0; continue; }
@@ -182,7 +222,7 @@
         return {
             dates, nD, dateIndex, staff, nS, rules,
             requests: input.requests || {}, events,
-            minimum, busyDay, thirdNeed, isHolidayDate
+            minimum, busyDay, weekendish, thirdNeed, isHolidayDate
         };
     }
 
@@ -308,20 +348,21 @@
         }
 
         // 4. 各人が「あと何日 公休を入れるか」
+        //    特休は公休の枠に含める（公休＋特休＝スタッフ画面の公休数。2026-08-09 お客さん要望）
         const quota = new Int32Array(nS);
         for (let s = 0; s < nS; s++) {
             const st = staff[s];
             if (st.manualOnly) { quota[s] = 0; continue; }
             let already = 0, lockedDays = 0;
             for (let d = 0; d < nD; d++) {
-                if (countsAsPublic(base[s][d])) already++;
+                if (countsTowardPublicQuota(base[s][d])) already++;
                 if (locked[s][d]) lockedDays++;
             }
             quota[s] = st.pubHolidays - already;
             if (quota[s] < 0) {
                 notes.push({
                     level: 'warn', kind: 'public-over', staff: st.name,
-                    message: `${st.name}さんは指定した休みだけで公休が${already}日になり、設定の${st.pubHolidays}日を超えています。設定を見直してください。`
+                    message: `${st.name}さんは指定した休みだけで公休＋特休が${already}日になり、設定の${st.pubHolidays}日を超えています。設定を見直してください。`
                 });
                 quota[s] = 0;
             }
@@ -340,24 +381,26 @@
         for (let s = 0; s < nS; s++) {
             const st = staff[s];
             if (st.manualOnly) { consecutiveFloor[s] = nD; continue; }
+            // その人だけの連勤上限（太田さん＝3日など）。0なら共通ルール
+            const maxRun = st.maxConsecutive > 0 ? st.maxConsecutive : ctx.rules.maxConsecutiveWork;
             const floor = minimumPossibleRun(nD, locked[s], base[s], quota[s], ctx.rules.minConsecutiveWork);
             consecutiveFloor[s] = floor;
             if (floor === Infinity) {
                 // どんな置き方でも連勤ルールを満たせない（1勤禁止と公休日数がぶつかる）
-                consecutiveFloor[s] = ctx.rules.maxConsecutiveWork;
+                consecutiveFloor[s] = maxRun;
                 notes.push({
                     level: 'warn', kind: 'consecutive-unsatisfiable', staff: st.name,
                     message: `${st.name}さんは、指定された休みの入り方と公休${st.pubHolidays}日では、`
-                        + `連勤${ctx.rules.minConsecutiveWork}〜${ctx.rules.maxConsecutiveWork}日のルールをどう組んでも満たせません。`
+                        + `連勤${ctx.rules.minConsecutiveWork}〜${maxRun}日のルールをどう組んでも満たせません。`
                         + `休み希望が1日おきに入っていないか確認してください。`
                 });
-            } else if (floor > ctx.rules.maxConsecutiveWork) {
+            } else if (floor > maxRun) {
                 let lockedOff = 0;
                 for (let d = 0; d < nD; d++) if (locked[s][d] && !isWorkCode(base[s][d])) lockedOff++;
                 notes.push({
                     level: 'warn', kind: 'consecutive-impossible', staff: st.name,
                     message: `${st.name}さんは、指定された休み${lockedOff}日と公休${st.pubHolidays}日の入り方では、`
-                        + `どう組んでも最大${floor}連勤になります（${ctx.rules.maxConsecutiveWork}連勤以内にできません）。`
+                        + `どう組んでも最大${floor}連勤になります（${maxRun}連勤以内にできません）。`
                         + `休み希望を月内に散らすか、公休日数を増やしてください。`
                 });
             }
@@ -437,6 +480,18 @@
         const tenEligible = autoIdx.filter(s => staff[s].canWorkTenShift);
         const tenFulltimePool = tenEligible.filter(s => staff[s].isFulltime);
         const tenParttimePool = tenEligible.filter(s => !staff[s].isFulltime);
+        // ①③⑩の合計（開店準備の担当回数）を均す母集団 ＝ どれか1つでも取れる人
+        const openingPool = autoIdx.filter(s =>
+            staff[s].canWorkOneShift || staff[s].canWorkTenShift || staff[s].canWorkThirdShift);
+        // 土日祝の出勤回数を均す母集団（自動対象の全員。
+        // 「土日祝少なめ」の人も含めて比べ、その人の回数には下駄を履かせる）
+        const weekendPool = autoIdx.slice();
+        // その人の連勤上限（太田さん＝3日など。0なら共通ルール）
+        const maxRunByStaff = new Int32Array(nS);
+        for (let s = 0; s < nS; s++) {
+            maxRunByStaff[s] = staff[s].maxConsecutive > 0 ? staff[s].maxConsecutive : rules.maxConsecutiveWork;
+        }
+        const { weekendish } = ctx;
 
         function evaluate(grid, collect) {
             let score = 0;
@@ -456,6 +511,9 @@
             };
 
             // ---- 人ごと ----
+            // 公平さの計算に使う回数（①③⑩の合計・土日祝の出勤）をこのループで一緒に数える
+            const openingCount = new Int32Array(nS);
+            const weekendWorkCount = new Int32Array(nS);
             for (let k = 0; k < autoIdx.length; k++) {
                 const s = autoIdx[k], st = staff[s], row = grid[s];
                 let publicCount = 0, blanks = 0, longRuns = 0;
@@ -464,8 +522,11 @@
                 for (let d = 0; d <= nD; d++) {
                     const v = d < nD ? row[d] : C.PUBLIC;
                     if (d < nD) {
-                        if (countsAsPublic(v)) publicCount++;
+                        // 特休は公休の枠に含めて数える（公休＋特休＝設定の公休数）
+                        if (countsTowardPublicQuota(v)) publicCount++;
                         else if (v === C.BLANK) blanks++;
+                        if (v === C.ONE || v === C.THIRD || v === C.TEN) openingCount[s]++;
+                        if (weekendish[d] && isWorkCode(v)) weekendWorkCount[s]++;
                     }
                     if (d < nD && isWorkCode(v)) { run++; } else {
                         if (run > 0) {
@@ -478,12 +539,13 @@
                                     { staff: st.name, date: dates[d - 1], si: s, di: d - 1 });
                             }
                             // どう置いても避けられない長さは減点しない（直せないものを追いかけない）
-                            const limit = Math.max(rules.maxConsecutiveWork, consecutiveFloor[s]);
+                            // 上限はその人ごと（太田さんは3日、ほかは共通ルール）
+                            const limit = Math.max(maxRunByStaff[s], consecutiveFloor[s]);
                             if (run > limit) {
                                 longRuns++;
                                 if (rules.allowFiveConsecutiveOnce && run === limit + 1 && longRuns === 1) {
                                     hit(W.fiveConsecutiveOnce, 'five-consecutive-allowed', 'soft',
-                                        `${st.name}さん ${dates[d - run]} から5連勤になりました（月1回までは許容）。`,
+                                        `${st.name}さん ${dates[d - run]} から${run}連勤になりました（月1回までは許容）。`,
                                         { staff: st.name, date: dates[d - run], si: s, di: d - run });
                                 } else {
                                     // 超えた日数に比例させる。同点だと探索が
@@ -529,7 +591,7 @@
 
                 if (publicCount !== st.pubHolidays) {
                     hit(W.publicCount * Math.abs(publicCount - st.pubHolidays), 'public-count', 'hard',
-                        `${st.name}さんの公休が${publicCount}日で、設定の${st.pubHolidays}日と違います。`,
+                        `${st.name}さんの公休＋特休が${publicCount}日で、設定の${st.pubHolidays}日と違います。`,
                         { staff: st.name });
                 }
                 if (blanks) {
@@ -627,11 +689,25 @@
             }
 
             // ---- 公平さ ----
+            // 主役: ①③⑩の合計回数（開店準備の担当回数）を、取れる人全員で均す。
+            // ⑩しか取れない人は⑩だけで合計を稼ぐ形になる（お客さん了承済み）。
+            // この均等化を最優先にするため、「⑩の正社員は1人が理想」より重い。
+            // きつい日は正社員2人⑩などで自然に調整される。
+            score += unevennessOfCounts(openingCount, openingPool) * W.openingFairness;
+
+            // 土日祝の出勤回数も全員で均す。
+            // 「土日祝少なめ」の人は回数に下駄（weekendLightOffset日）を履かせて比べるので、
+            // まわりよりそのぶん土日祝出勤が少ない状態が「公平」として扱われる。
+            for (let k = 0; k < weekendPool.length; k++) {
+                const s2 = weekendPool[k];
+                if (staff[s2].weekendLight) weekendWorkCount[s2] += W.weekendLightOffset;
+            }
+            score += unevennessOfCounts(weekendWorkCount, weekendPool) * W.weekendFairness;
+
+            // 味付け: 種類ごとの散らし（合計が同じでも、①だけ・⑩だけに偏らないように）
             // ⑩は正社員どうし・パートどうしで比べる。
-            // 「⑩は正社員1人＋パート2人」が理想なので、
+            // 「⑩は正社員1人＋パート2人」が基本形なので、
             // パートのほうが⑩が多くなるのは構造上あたりまえ。
-            // 全員をひとまとめに比べると、そのあたりまえを直そうとして
-            // かえって正社員どうしの偏りが放置される。
             score += unevenness(grid, tenFulltimePool, C.TEN) * W.tenFairness;
             score += unevenness(grid, tenParttimePool, C.TEN) * W.tenFairness;
             // ①は正社員・パートの区別なく、入る人全員で均す
@@ -640,6 +716,20 @@
             // ひとまとめに比べると意味のない減点が常時乗り、探索の邪魔になる。
 
             return collect ? { score, issues } : score;
+        }
+
+        // すでに数え終わった回数の配列に対する「平均からのズレの2乗」の合計
+        function unevennessOfCounts(countArr, pool) {
+            if (pool.length < 2) return 0;
+            let sum = 0;
+            for (let k = 0; k < pool.length; k++) sum += countArr[pool[k]];
+            const mean = sum / pool.length;
+            let pen = 0;
+            for (let k = 0; k < pool.length; k++) {
+                const diff = countArr[pool[k]] - mean;
+                pen += diff * diff;
+            }
+            return pen;
         }
 
         // 平均からのズレの2乗を合計する。
@@ -823,6 +913,11 @@
         // その人の「ふつうの出勤」。岡崎さんだけ④、ほかは⑥。
         const normalWork = new Int32Array(nS);
         for (let s2 = 0; s2 < nS; s2++) normalWork[s2] = staff[s2].usesFourthShift ? C.FOURTH : C.SIX;
+        // その人の連勤上限（太田さん＝3日など）
+        const maxRunOf = new Int32Array(nS);
+        for (let s2 = 0; s2 < nS; s2++) {
+            maxRunOf[s2] = staff[s2].maxConsecutive > 0 ? staff[s2].maxConsecutive : rules.maxConsecutiveWork;
+        }
         let current = grid;
         let currentScore = evaluate(current);
         let best = current.map(r => Int32Array.from(r));
@@ -902,7 +997,7 @@
                     if (run > len) { len = run; start = d - run; }
                     run = 0;
                 }
-                if (len <= rules.maxConsecutiveWork || start < 0) continue;
+                if (len <= maxRunOf[s] || start < 0) continue;
                 // その連勤のなかで動かせる日を探す
                 const inside = [];
                 for (let d = start; d < start + len; d++) if (!locked[s][d]) inside.push(d);

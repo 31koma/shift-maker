@@ -37,7 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function getCellClass(value) {
-        if (value === '休') return 'active-rest';
+        if (value === '休') return 'active-public';   // 「休」は「公」と同じ扱い（表示も公）
         if (value === '公') return 'active-public';
         if (value === '有' || value === '有休' || value === '特' || value === '特休') return 'active-paid-leave';
         if (value === '1') return 'active-1';
@@ -113,8 +113,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 datesArray.forEach(dateStr => {
                     const cellVal = (requestData[dateStr] && requestData[dateStr][staffName]) || '';
                     const extraClass = getCellClass(cellVal);
+                    // 「休」は「公」に統一して表示（梅林園の提出書類が公休表示のため）
+                    const displayVal = cellVal === '休' ? '公' : cellVal;
 
-                    tbody += `<td class="cell ${extraClass}" data-date="${dateStr}" data-name="${staffName}"><span class="cell-value">${cellVal}</span></td>`;
+                    tbody += `<td class="cell ${extraClass}" data-date="${dateStr}" data-name="${staffName}"><span class="cell-value">${displayVal}</span></td>`;
                 });
                 tbody += `</tr>`;
             });
@@ -139,13 +141,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         let currentVal = requestData[dateStr][staffName] || '';
-        // 切り替え順: "" → 休 → 有 → 特 → 10 → 1 → 6 → ""
+        // 切り替え順: "" → 公 → 有 → 特 → 10 → 1 → 6 → ""
         //
-        // 以前は「休」と「公」が両方あったが、生成結果はどちらもまったく同じ
-        // （どちらも公休になる）ため、押し分ける意味がなく混乱の元だった。
-        // ここでは「休」に一本化する。
-        // 既存データに残っている「公」は、押すと次（有）へ進むので自然に消える。
-        if (currentVal === '') currentVal = '休';
+        // 2026-08-09 お客さん要望で「公」表示に統一した
+        // （梅林園の提出書類が公休＝「公」表示のため）。
+        // 既存データに残っている「休」は、表示だけ「公」にし、押すと次（有）へ進む。
+        if (currentVal === '') currentVal = '公';
         else if (currentVal === '休' || currentVal === '公') currentVal = '有';
         else if (currentVal === '有' || currentVal === '有休') currentVal = '特';
         else if (currentVal === '特' || currentVal === '特休') currentVal = '10';
