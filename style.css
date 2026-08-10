@@ -1784,8 +1784,22 @@ body {
         max-width: none;
     }
 
+    /* 縦方向は詰め気味にする。
+       A4横の印字可能高さは約741px しかなく、余裕がないと
+       スタッフが1〜2人増えただけで2枚目に割れてしまう
+       （19人で検証したら9px超過で2枚になった）。
+       ここの詰めで、22人程度までは1枚に収まる。 */
     .shift-table th {
-        height: 150px;
+        height: 128px;
+    }
+
+    #print-header {
+        margin-bottom: 2px !important;
+    }
+
+    #print-header h2 {
+        font-size: 16px;
+        margin: 0;
     }
 
     .shift-table thead tr.month-top-row th {
@@ -1819,13 +1833,16 @@ body {
     .shift-table .event-two-col {
         width: 26px;
         gap: 1px;
-        margin-top: 6px;
+        margin-top: 4px;
+        /* 画面用の inline style（116px）を印刷では上書きして詰める */
+        height: 102px !important;
     }
 
     .shift-table .event-col {
         width: 12px;
         flex: 0 0 12px;
-        max-height: 110px;
+        height: 100px !important;
+        max-height: 100px;
         font-size: 0.58rem;
         letter-spacing: 0;
         color: #000 !important;
@@ -1835,9 +1852,10 @@ body {
         width: 76px !important;
         min-width: 76px !important;
         max-width: 76px !important;
-        font-size: 0.9rem;
+        /* 行の高さはこの名前列で決まる。詰めるほど1枚に入る人数が増える */
+        font-size: 0.82rem;
         font-weight: 700;
-        padding: 2px 4px !important;
+        padding: 1px 4px !important;
         white-space: nowrap;
     }
 
@@ -1872,7 +1890,7 @@ body {
     }
 
     .shift-table td.cell .cell-value {
-        min-height: 20px;
+        min-height: 18px;
         line-height: 1 !important;
         align-items: center;
         justify-content: center;
