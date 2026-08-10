@@ -1,5 +1,8 @@
 document.addEventListener('DOMContentLoaded', () => {
     const SHIFT_TYPES = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"];
+    // 実際の運用で使う区分。シフト表のクリック順と、日ごとの勤務別合計に使う。
+    const USED_SHIFT_TYPES = ["1", "3", "4", "6", "10"];
+    const COUNTED_SHIFT_TYPES = ["1", "3", "4", "6", "10"];
     // 共通設定（config.js）から読む。取得できない場合だけ従来値を使う。
     const MAX_PUBLIC_HOLIDAYS = (window.SHIFT_CONFIG && window.SHIFT_CONFIG.MAX_PUBLIC_HOLIDAYS) || 8;
     const DEFAULT_MAX_CONSECUTIVE_WORK_DAYS = 3;
@@ -53,8 +56,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const DEFAULT_TIME_SETTINGS = {
         "1": { enabled: true, start: "06:00", end: "14:30" },
         "2": { enabled: true, start: "", end: "" },
-        "3": { enabled: true, start: "", end: "" },
-        "4": { enabled: true, start: "", end: "" },
+        // ③ 行事の日の早番、④ 岡崎さんの通常勤務。
+        // 2026-08-10 まで時間が空欄で「時間未設定」と表示されていた
+        "3": { enabled: true, start: "07:00", end: "15:30" },
+        "4": { enabled: true, start: "07:30", end: "16:00" },
         "5": { enabled: true, start: "", end: "" },
         "6": { enabled: true, start: "08:30", end: "17:00" },
         "7": { enabled: true, start: "", end: "" },
@@ -106,6 +111,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const saveResultBtn = document.getElementById('saveBtn') || document.getElementById('save-result-btn');
     const openSavedResultsBtn = document.getElementById('openSavedResultsBtn') || document.getElementById('open-saved-results-btn');
     const summaryPrintBtn = document.getElementById('summary-print-btn');
+    const dailyCountPrintContainer = document.getElementById('daily-count-print-table-container');
     const savedResultsModal = document.getElementById('saved-results-modal');
     const closeSavedResultsBtn = document.getElementById('close-saved-results');
     const closeSavedResultsFooterBtn = document.getElementById('close-saved-results-footer');
@@ -462,11 +468,24 @@ document.addEventListener('DOMContentLoaded', () => {
     function loadTimeSettings() {
         const saved = JSON.parse(localStorage.getItem('shiftApp_timeSettings')) || {};
         const settings = {};
+        let filled = false;
         SHIFT_TYPES.forEach(type => {
             settings[type] = { ...DEFAULT_TIME_SETTINGS[type], ...(saved[type] || {}) };
+            // 保存済みの設定が空欄のときは既定の時間を入れ直す。
+            // ③④は以前まで既定が空だったため、一度でも時間設定を保存していると
+            // 空欄のまま残り「時間未設定」と表示されてしまう。
+            ['start', 'end'].forEach(key => {
+                if (!settings[type][key] && DEFAULT_TIME_SETTINGS[type][key]) {
+                    settings[type][key] = DEFAULT_TIME_SETTINGS[type][key];
+                    filled = true;
+                }
+            });
         });
         if (!settings["1"].enabled) {
             settings["1"].enabled = true;
+        }
+        if (filled) {
+            try { localStorage.setItem('shiftApp_timeSettings', JSON.stringify(settings)); } catch (e) { /* 保存できなくても続行 */ }
         }
         return settings;
     }
@@ -525,24 +544,24 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderTimeSummary() {
-        const parts = SHIFT_TYPES.filter(type => timeSettings[type].enabled).map(type => {
-            const conf = timeSettings[type];
-            const label = getShiftLabel(type);
-            const range = (conf.start && conf.end) ? `${conf.start}-${conf.end}` : '時間未設定';
-            return `${label} ${range}`;
-        });
+        // 時間が入っている区分だけ並べる。
+        // 以前は使っていない②⑤⑦⑧⑨も「時間未設定」と出て、画面と印刷の見出しが
+        // 読みにくくなっていた（2026-08-10 整理）。
+        const parts = SHIFT_TYPES
+            .filter(type => timeSettings[type].enabled && timeSettings[type].start && timeSettings[type].end)
+            .map(type => `${getShiftLabel(type)} ${timeSettings[type].start}-${timeSettings[type].end}`);
         const summary = `時間設定: ${parts.length > 0 ? parts.join(" / ") : '全てOFF'}`;
         shiftTimeSummary.textContent = summary;
         printTimeSummary.textContent = summary;
     }
 
     function getEnabledShiftTimeText() {
-        const parts = SHIFT_TYPES.filter(type => timeSettings[type].enabled).map(type => {
-            const conf = timeSettings[type];
-            const label = getShiftLabel(type);
-            const range = (conf.start && conf.end) ? `${conf.start}-${conf.end}` : '時間未設定';
-            return `${label} ${range}`;
-        });
+        // 時間が入っている区分だけ並べる。
+        // 以前は使っていない②⑤⑦⑧⑨も「時間未設定」と出て、画面と印刷の見出しが
+        // 読みにくくなっていた（2026-08-10 整理）。
+        const parts = SHIFT_TYPES
+            .filter(type => timeSettings[type].enabled && timeSettings[type].start && timeSettings[type].end)
+            .map(type => `${getShiftLabel(type)} ${timeSettings[type].start}-${timeSettings[type].end}`);
         return parts.length > 0 ? parts.join(' / ') : '全てOFF';
     }
 
@@ -889,13 +908,14 @@ document.addEventListener('DOMContentLoaded', () => {
             `・出勤人数: 平日${weekdayMin}人以上、土日祝${weekendMin}人以上。月行事ページで日ごとの人数も指定できる（人数多めチェックだけの日は＋1人）`,
             `・連勤: ${minRun}〜${maxRun}日` + (allowOnce ? `（どうしても組めないときだけ、月1回まで上限+1日を許す）` : '（超えない）')
                 + (perStaffRunText ? `。例外: ${perStaffRunText}` : ''),
-            `・①: 1日${generateRules.oneShiftCount}人。入れるのは${oneCount}人（スタッフ画面で「①に参加」を付けた人）。翌日は必ず休み`,
+            `・①: 1日${generateRules.oneShiftCount}人。入れるのは${oneCount}人（スタッフ画面で「①に参加」を付けた人）。翌日は必ず休み。前日に⑩は入れない`,
             `・⑩: 1日${generateRules.tenShiftCount}人。入れるのは${tenCount}人。3人全員がパートにはしない`
                 + (generateRules.tenFulltimeRandom === true
                     ? '（正社員の人数はランダム）'
                     : '（正社員1人が基本。均等化や人繰りで2人3人になる日もある）'),
-            '・③: 自動では入れない。月行事ページで③の人数を入れた行事の日だけ、その人数ちょうど'
-                + (thirdNames.length ? `。入れるのは ${thirdNames.join('・')} さん` : ''),
+            '・③(7:00〜15:30): 自動では入れない。月行事ページで③の人数を入れた行事の日だけ、その人数ちょうど'
+                + (thirdNames.length ? `。自動で入れるのは ${thirdNames.join('・')} さん` : '')
+                + '。休み希望ページで直接指名すれば、誰にでも・どの日にも入れられる',
             '・④: 岡崎さんの通常勤務（⑥の代わり）。行事の日も④のまま',
             `・公休: 公休＋特休＝設定した日数ちょうど。誕生日休「誕」も公休に含む（誕生日を登録済み ${birthdayCount}人）`,
             '・有休: 別枠。入れたぶん休みが増える',
@@ -4059,13 +4079,72 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function getEditableValues(currentVal) {
-        const values = SHIFT_TYPES.filter(type => timeSettings[type] && timeSettings[type].enabled);
+        // 実際に使う区分だけを回す。以前は①②③④⑤⑥⑦⑧⑨⑩を1つずつ回っていたため、
+        // ③を出したいのに1回押しすぎて④になる取り違えが起きていた（2026-08-10 お客さん指摘）。
+        const values = USED_SHIFT_TYPES.filter(type => timeSettings[type] && timeSettings[type].enabled);
         values.push('公', '有', '特', '');
 
+        // すでに入っている値が一覧になければ先頭に足す（旧データの②などを消さないため）
         if (currentVal && !values.includes(currentVal)) {
             values.unshift(currentVal);
         }
         return values;
+    }
+
+    /** 日ごとの勤務区分別の人数 */
+    function getDailyShiftTypeCounts(dates, staffStats) {
+        const result = {};
+        COUNTED_SHIFT_TYPES.forEach(type => { result[type] = dates.map(() => 0); });
+        dates.forEach((d, idx) => {
+            const dateStr = formatDateForData(d);
+            staffStats.forEach(s => {
+                const val = s.schedule[dateStr] || '';
+                if (result[val]) result[val][idx]++;
+            });
+        });
+        return result;
+    }
+
+    /** 印刷の別紙「日ごとの勤務別合計」を組む */
+    function buildDailyCountTableHtml(dates, staffStats) {
+        if (!dates.length || !staffStats.length) return '';
+        const counts = getDailyShiftTypeCounts(dates, staffStats);
+        const totals = getDailyWorkCounts(dates, staffStats);
+
+        let head = '<tr><th class="sticky-col">勤務</th>';
+        dates.forEach((d, index) => {
+            const dow = d.getDay();
+            let cls = '';
+            if (dow === 0) cls = 'day-sun';
+            if (dow === 6) cls = 'day-sat';
+            const dateStr = formatDateForData(d);
+            if (isHolidayDateStr(dateStr)) cls += `${cls ? ' ' : ''}day-holiday`;
+            const prev = index > 0 ? dates[index - 1] : null;
+            const monthMark = (!prev || d.getMonth() !== prev.getMonth()) ? `${d.getMonth() + 1}/` : '';
+            head += `<th class="${cls}">${monthMark}${d.getDate()}</th>`;
+        });
+        head += '</tr>';
+
+        let body = '';
+        COUNTED_SHIFT_TYPES.forEach(type => {
+            // その月にまったく使っていない区分は行を出さない（③を使わない月など）
+            if (!counts[type].some(n => n > 0)) return;
+            body += `<tr><td class="sticky-col">${escapeHtml(getShiftLabel(type))}</td>`;
+            counts[type].forEach(n => { body += `<td>${n}</td>`; });
+            body += '</tr>';
+        });
+        body += '<tr class="daily-count-total"><td class="sticky-col">合計人数</td>';
+        totals.forEach(n => { body += `<td>${n}</td>`; });
+        body += '</tr>';
+
+        return `<table class="daily-count-table"><thead>${head}</thead><tbody>${body}</tbody></table>`;
+    }
+
+    function renderDailyCountArea() {
+        const html = (lastGeneratedDates.length && lastGeneratedStaffStats.length)
+            ? buildDailyCountTableHtml(lastGeneratedDates, lastGeneratedStaffStats)
+            : '';
+        if (dailyCountPrintContainer) dailyCountPrintContainer.innerHTML = html;
     }
 
     function getStaffShiftSummary(staff) {
@@ -4109,6 +4188,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // 公休＋特休（＝スタッフ画面で設定した公休数になるはずの数）
         counts.offTotal = counts.publicHoliday + counts.specialLeave;
+        // 公休＋特休＋有休（休みの総数。2026-08-10 お客さん要望で追加）
+        counts.offTotalWithPaid = counts.offTotal + counts.paidLeave;
         // 開店準備・鍵開けの担当回数 = ①＋③＋⑩（④は含めない）
         counts.openingTotal = (counts['1'] || 0) + (counts['3'] || 0) + (counts['10'] || 0);
         // 土日祝の休み合計（同じ日が土曜かつ祝日でも二重に数えない）
@@ -4169,13 +4250,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const list = staffStats || [];
         const summaries = list.map(staff => ({ staff: staff, counts: getStaffShiftSummary(staff) }));
 
-        // ③は使われている月だけ列に出す（使わない月は0だけの列が増えて読みにくいため）
-        const showThree = summaries.some(item => (item.counts['3'] || 0) > 0);
-        const showFour = summaries.some(item => (item.counts['4'] || 0) > 0);
-
+        // ③④の列は必ず出す。
+        // 以前は「その月に使われていれば出す」だったため、③が0の月は③列ごと消え、
+        // ①の隣が④列になって「③を入れたのに④で数えられている」ように見えていた
+        // （2026-08-10 お客さん指摘）。
         const rows = summaries.map(({ staff, counts }) => {
             const workTotal = SHIFT_TYPES.reduce((sum, type) => sum + (counts[type] || 0), 0);
-            const total = workTotal + (counts.publicHoliday || 0) + (counts.specialLeave || 0) + (counts.paidLeave || 0);
+            const total = workTotal + (counts.offTotalWithPaid || 0);
 
             return `
                 <tr>
@@ -4183,11 +4264,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     <td>${workTotal}</td>
                     <td>${counts.publicHoliday || 0}</td>
                     <td>${counts.specialLeave || 0}</td>
-                    <td class="sum-col">${counts.offTotal || 0}</td>
                     <td>${counts.paidLeave || 0}</td>
+                    <td class="sum-col">${counts.offTotal || 0}</td>
+                    <td class="sum-col">${counts.offTotalWithPaid || 0}</td>
                     <td>${counts["1"] || 0}</td>
-                    ${showThree ? `<td>${counts["3"] || 0}</td>` : ''}
-                    ${showFour ? `<td>${counts["4"] || 0}</td>` : ''}
+                    <td>${counts["3"] || 0}</td>
+                    <td>${counts["4"] || 0}</td>
                     <td>${counts["6"] || 0}</td>
                     <td>${counts["10"] || 0}</td>
                     <td class="sum-col">${counts.openingTotal || 0}</td>
@@ -4201,12 +4283,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const eligible = summaries.filter(item => isOpeningShiftEligible(item.staff));
         const openingSum = eligible.reduce((sum, item) => sum + (item.counts.openingTotal || 0), 0);
         const openingAvg = eligible.length ? (openingSum / eligible.length) : 0;
-        const colsBeforeOpening = 7 + (showThree ? 1 : 0) + (showFour ? 1 : 0) + 2;
+        // 平均行: 1+3+10 の列より前にあるセルの数
+        // （名前・勤務数・公・特・有・公+特・公+特+有・1・3・4・6・10 = 12）
+        const colsBeforeOpening = 12;
 
         const avgRow = eligible.length ? `
                 <tr class="avg-row">
                     <td colspan="${colsBeforeOpening}" style="text-align:right;">
-                        ①${showThree ? '③' : ''}⑩の平均（番号の取れる${eligible.length}人）
+                        ①③⑩の平均（番号の取れる${eligible.length}人）
                     </td>
                     <td class="sum-col">${openingAvg.toFixed(1)}</td>
                     <td colspan="2"></td>
@@ -4214,18 +4298,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         return `
             <div class="all-summary-title">スタッフ別集計</div>
-            <div class="all-summary-legend">赤枠の公 = 指定（希望休・手直し）／公+特 = スタッフ画面の公休数どおりになる数／有 = 有休（別枠）／①③⑩ = 開店準備の担当回数（④は含めない）</div>
+            <div class="all-summary-legend">赤枠の公 = 指定（希望休・手直し）／公+特 = スタッフ画面の公休数どおりになる数／公+特+有 = 休みの総数／①③⑩ = 開店準備の担当回数（④は含めない）</div>
             <div class="all-summary-table-wrap">
                 <table class="all-summary-table">
                     <thead>
                         <tr>
                             <th>スタッフ名</th><th>勤務数</th>
-                            <th>公休</th><th>特休</th><th class="sum-col">公+特</th><th>有休</th>
-                            <th>1</th>
-                            ${showThree ? '<th>3</th>' : ''}
-                            ${showFour ? '<th>4</th>' : ''}
-                            <th>6</th><th>10</th>
-                            <th class="sum-col">1+${showThree ? '3+' : ''}10</th>
+                            <th>公休</th><th>特休</th><th>有休</th>
+                            <th class="sum-col">公+特</th><th class="sum-col">公+特+有</th>
+                            <th>1</th><th>3</th><th>4</th><th>6</th><th>10</th>
+                            <th class="sum-col">1+3+10</th>
                             <th>土日祝休</th><th>合計</th>
                         </tr>
                     </thead>
@@ -4241,6 +4323,8 @@ document.addEventListener('DOMContentLoaded', () => {
             : '<div class="summary-empty">集計するシフトがありません。</div>';
         if (summaryTableContainer) summaryTableContainer.innerHTML = html;
         if (summaryPrintTableContainer) summaryPrintTableContainer.innerHTML = html;
+        // 印刷の別紙（日ごとの勤務別合計）も同じタイミングで作り直す
+        renderDailyCountArea();
     }
 
     function applyCellValue(td, nextVal, staff, dateStr) {
@@ -4300,13 +4384,26 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateDailyTotalRow() {
-        const totalCells = tableContainer.querySelectorAll('.daily-total-row .daily-total-cell');
-        if (!totalCells.length || !lastGeneratedDates.length || !lastGeneratedStaffStats.length) return;
+        if (!lastGeneratedDates.length || !lastGeneratedStaffStats.length) return;
 
-        const counts = getDailyWorkCounts(lastGeneratedDates, lastGeneratedStaffStats);
-        totalCells.forEach((cell, idx) => {
-            cell.textContent = `${counts[idx] || 0}`;
+        const totalCells = tableContainer.querySelectorAll('.daily-total-row .daily-total-cell');
+        if (totalCells.length) {
+            const counts = getDailyWorkCounts(lastGeneratedDates, lastGeneratedStaffStats);
+            totalCells.forEach((cell, idx) => {
+                cell.textContent = `${counts[idx] || 0}`;
+            });
+        }
+
+        // 勤務区分ごとの行も一緒に直す（手でセルを直したときに数が合わなくなるため）
+        const typeCounts = getDailyShiftTypeCounts(lastGeneratedDates, lastGeneratedStaffStats);
+        tableContainer.querySelectorAll('.shift-count-row').forEach(row => {
+            const type = row.dataset.type;
+            if (!typeCounts[type]) return;
+            row.querySelectorAll('.shift-count-cell').forEach((cell, idx) => {
+                cell.textContent = `${typeCounts[type][idx] || 0}`;
+            });
         });
+        renderDailyCountArea();
     }
 
     function renderShiftTable(dates, staffStats) {
@@ -4376,6 +4473,18 @@ document.addEventListener('DOMContentLoaded', () => {
             tbody += `<td class="daily-total-cell">${count}</td>`;
         });
         tbody += `</tr>`;
+
+        // 日ごとの勤務区分別の人数。画面ではここに出し、印刷では別紙(2枚目)に出す。
+        // 勤務表と一緒に刷るとスタッフが19人を超えたところで2枚に割れるため
+        // （17人=725px / A4横の上限741px。実測して分けた）
+        const typeCounts = getDailyShiftTypeCounts(dates, staffStats);
+        COUNTED_SHIFT_TYPES.forEach(type => {
+            if (!typeCounts[type].some(n => n > 0)) return;   // 使っていない区分は出さない
+            tbody += `<tr class="shift-count-row" data-type="${escapeAttr(type)}">`
+                + `<td class="sticky-col">${escapeHtml(getShiftLabel(type))} の合計</td>`;
+            typeCounts[type].forEach(n => { tbody += `<td class="shift-count-cell">${n}</td>`; });
+            tbody += `</tr>`;
+        });
 
         const shiftTimeText = getEnabledShiftTimeText();
         tbody += `<tr class="shift-time-row"><td class="sticky-col">時間帯</td><td class="shift-time-cell" colspan="${dates.length}">${shiftTimeText}</td></tr>`;

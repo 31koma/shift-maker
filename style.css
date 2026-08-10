@@ -1130,6 +1130,12 @@ body {
     font-weight: 700;
 }
 
+.request-table td.cell.active-3 {
+    background: #FDF2F8;
+    color: #BE185D;
+    font-weight: 700;
+}
+
 .request-table td.cell.active-6 {
     background: #F0FDFA;
     color: #0F766E;
@@ -1542,6 +1548,24 @@ body {
     font-weight: 700;
 }
 
+/* 日ごとの勤務別合計（画面）。合計人数の行と同じ見た目で、少し薄くする */
+.shift-table tr.shift-count-row td {
+    background: #f8fafc;
+    color: var(--text-main);
+    font-weight: 700;
+    text-align: center;
+}
+
+.shift-table tr.shift-count-row td.sticky-col {
+    background: #eef2f7;
+    white-space: nowrap;
+}
+
+/* 画面では別紙は出さない（印刷のときだけ2枚目に出る） */
+.daily-count-print-area {
+    display: none;
+}
+
 /* 指定（希望入力・手動編集）のセル: 画面では赤い枠、印刷では赤文字 */
 .shift-table td.cell.c-designated {
     box-shadow: inset 0 0 0 2px #dc2626;
@@ -1676,7 +1700,11 @@ body {
     .top-nav,
     .staff-actions,
     .month-control,
-    #toast {
+    #toast,
+    /* バックアップの案内バナーとバッジ。画面の一番上に固定表示されるため、
+       印刷すると全ページの上端に重なって表を隠してしまう（2026-08-10 修正） */
+    #shift-backup-banner,
+    #shift-backup-badge {
         display: none !important;
     }
 
@@ -1728,6 +1756,62 @@ body {
 
     body.print-summary-only .summary-print-area {
         display: block !important;
+    }
+
+    /* 日ごとの勤務別合計。
+       画面ではシフト表の中の行として出し、印刷では勤務表の2枚目（別紙）に出す。
+       勤務表と同じ紙に入れると、スタッフが19人を超えたところで
+       勤務表そのものが2枚に割れてしまうため分けている（実測して決めた）。 */
+    body.print-shift-only .shift-count-row {
+        display: none !important;
+    }
+
+    body.print-summary-only .daily-count-print-area {
+        display: none !important;
+    }
+
+    body.print-shift-only .daily-count-print-area {
+        display: block !important;
+        page-break-before: always;
+        break-before: page;
+    }
+
+    .daily-count-print-area h2 {
+        text-align: center;
+        font-size: 16px;
+        margin: 0 0 10px;
+    }
+
+    .daily-count-table {
+        width: 100% !important;
+        border-collapse: collapse;
+        table-layout: fixed;
+        font-size: 12px;
+    }
+
+    .daily-count-table th,
+    .daily-count-table td {
+        border: 1.5px solid #000 !important;
+        background: #fff !important;
+        color: #000 !important;
+        text-align: center;
+        padding: 4px 0;
+        font-weight: 700;
+    }
+
+    .daily-count-table .sticky-col {
+        width: 76px !important;
+        font-size: 0.82rem;
+        white-space: nowrap;
+    }
+
+    .daily-count-table th.day-sun,
+    .daily-count-table th.day-holiday {
+        color: #c1121f !important;
+    }
+
+    .daily-count-table .daily-count-total td {
+        background: #e5e7eb !important;
     }
 
     .summary-print-area h2 {

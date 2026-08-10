@@ -91,6 +91,10 @@
         publicCount: 100000,        // 公休日数が設定と違う
         oneCount: 60000,            // ①が毎日ちょうど1人でない
         oneNextDayWork: 60000,      // ①の翌日が出勤
+        // ⑩(10:30-19:00)の翌日に①(6:00-)は間が空かないため禁止。
+        // 旧エンジンの oneNoAfterTen にあったルール。新エンジンへの移植漏れで
+        // 実データ48回中452件発生していた（2026-08-10 お客さん指摘で復活）。
+        oneAfterTen: 60000,         // ①の前日が⑩
         oneIneligible: 90000,       // ①に入れない人が①
         tenAllPart: 50000,          // ⑩が全員パート
         tenBeforeFixedOff: 40000,   // 希望休・有休・特休の前日に⑩
@@ -580,6 +584,13 @@
                             }
                         } else tenRun = 0;
 
+                        // ①の前日は⑩にしない
+                        if (v === C.ONE && d > 0 && row[d - 1] === C.TEN) {
+                            hit(W.oneAfterTen, 'one-after-ten', 'hard',
+                                `${st.name}さん ${dates[d]} の①の前日が⑩になっています。`,
+                                { staff: st.name, date: dates[d], si: s, di: d });
+                        }
+
                         // ①の翌日は休み
                         if (v === C.ONE && d + 1 < nD && isWorkCode(row[d + 1])) {
                             hit(W.oneNextDayWork, 'one-next-day-work', 'hard',
@@ -605,6 +616,11 @@
                 let workCount = manualWork[d];
                 let tenTotal = manualTen[d], tenFulltime = manualTenFulltime[d];
                 let oneTotal = manualOne[d], thirdTotal = manualThird[d];
+                // 自動で置いた③だけを別に数える。
+                // 指定で入れた③は動かせないので、「行事の日じゃないのに③」
+                // 「③に入れない人が③」で減点しても直しようがなく、
+                // 画面に消えない警告が出るだけになる（2026-08-10 修正）。
+                let thirdAuto = 0;
                 let coreWorking = false;
 
                 for (let k = 0; k < autoIdx.length; k++) {
@@ -622,9 +638,12 @@
                     }
                     else if (v === C.THIRD) {
                         thirdTotal++;
-                        if (!st.canWorkThirdShift) hit(W.thirdIneligible, 'third-ineligible', 'hard',
-                            `${dates[d]} の③に${st.name}さんが入っていますが、③に入れない人です。`,
-                            { staff: st.name, date: dates[d] });
+                        if (!locked[s][d]) {
+                            thirdAuto++;
+                            if (!st.canWorkThirdShift) hit(W.thirdIneligible, 'third-ineligible', 'hard',
+                                `${dates[d]} の③に${st.name}さんが入っていますが、③に入れない人です。`,
+                                { staff: st.name, date: dates[d] });
+                        }
                     }
                     else if (v === C.FOURTH && !st.usesFourthShift) {
                         hit(W.fourthWrongPerson, 'fourth-wrong-person', 'hard',
@@ -673,8 +692,10 @@
                             `${dates[d]} の⑩が正社員${tenFulltime}人になりました（1人が理想）。`, { date: dates[d] });
                     }
                 }
-                if (!busyDay[d] && thirdTotal > 0) {
-                    hit(W.thirdOnNonEvent * thirdTotal, 'third-on-non-event', 'hard',
+                // 指定の③は行事の日でなくても入れてよい（お客さんが直接指名する運用）。
+                // 自動で置いた③だけを戻す。
+                if (!busyDay[d] && thirdAuto > 0) {
+                    hit(W.thirdOnNonEvent * thirdAuto, 'third-on-non-event', 'hard',
                         `${dates[d]} は行事の日ではないのに③が入っています。`, { date: dates[d] });
                 }
                 if (thirdNeed[d] > thirdTotal) {
@@ -682,9 +703,12 @@
                         `${dates[d]} の③が${thirdTotal}人で、指定の${thirdNeed[d]}人に足りません。`, { date: dates[d] });
                 } else if (busyDay[d] && thirdTotal > thirdNeed[d]) {
                     // 行事の日の③は「指定人数ちょうど」。多い分も戻す。
-                    // 足りない側しか見ていなかったため、③が必要以上に増えていた。
-                    hit(W.thirdCount * (thirdTotal - thirdNeed[d]), 'third-over', 'soft',
-                        `${dates[d]} の③が${thirdTotal}人で、指定の${thirdNeed[d]}人より多く入っています。`, { date: dates[d] });
+                    // ただし戻せるのは自動で置いた分だけ（指定の③は動かせない）。
+                    const removable = Math.min(thirdTotal - thirdNeed[d], thirdAuto);
+                    if (removable > 0) {
+                        hit(W.thirdCount * removable, 'third-over', 'soft',
+                            `${dates[d]} の③が${thirdTotal}人で、指定の${thirdNeed[d]}人より多く入っています。`, { date: dates[d] });
+                    }
                 }
             }
 
@@ -853,6 +877,7 @@
                 if (done.has(s) || !staff[s].canWorkOneShift) continue;
                 const next = d + 1;
                 if (next < nD && isWorkCode(grid[s][next]) ) continue;   // 翌日が出勤なら①にしない
+                if (d > 0 && grid[s][d - 1] === C.TEN) continue;         // 前日が⑩なら①にしない
                 grid[s][d] = C.ONE; done.add(s); onePlaced++;
             }
 
@@ -1120,6 +1145,31 @@
                 if (improved) break;
             }
 
+            // ①そのものを別の人へ渡して直す。
+            //   例) 月末で公休を使い切った人に①が当たると、
+            //       「①の翌日は休み」を満たせず必ず違反になる。
+            //       その①を、翌日が休みの別の人へ渡せば消える。
+            if (!improved) {
+                for (const issue of targets) {
+                    const s = staffIndex.get(issue.staff);
+                    const at = ctx.dateIndex.get(issue.date);
+                    if (grid[s][at] !== C.ONE || locked[s][at]) continue;
+                    for (let t = 0; t < nS && !improved; t++) {
+                        if (t === s || staff[t].manualOnly || !staff[t].canWorkOneShift) continue;
+                        if (locked[t][at] || !isWorkCode(grid[t][at])) continue;
+                        if (at + 1 < nD && isWorkCode(grid[t][at + 1])) continue;   // 翌日が出勤なら渡せない
+                        if (at > 0 && grid[t][at - 1] === C.TEN) continue;          // ①の前日に⑩は入れない
+                        const savedS = grid[s][at], savedT = grid[t][at];
+                        grid[t][at] = C.ONE;
+                        grid[s][at] = normalWork[s];
+                        const next = evaluate(grid);
+                        if (next < score - 0.001) { score = next; improved = true; break; }
+                        grid[s][at] = savedS; grid[t][at] = savedT;
+                    }
+                    if (improved) break;
+                }
+            }
+
             // 1手ずつの入れ替えでは直らない噛み合いがある。
             // よくあるのが①がらみ。
             //   例) 休→①→休 の「休」を出勤に変えたい。でも前日が①なので
@@ -1164,6 +1214,10 @@
                 if (t === s || staff[t].manualOnly || !staff[t].canWorkOneShift) continue;
                 if (locked[t][prev] || !isWorkCode(grid[t][prev])) continue;
                 if (prev + 1 < nD && isWorkCode(grid[t][prev + 1])) continue;   // 翌日が出勤なら渡せない
+                // 前日が⑩の人には渡せない（①の前日に⑩は入れないルール）。
+                // これを見ていないと、渡した先で必ず新しい違反が起きるため
+                // 常に「良くならない」と判定され、この手が一度も成立しなかった。
+                if (prev > 0 && grid[t][prev - 1] === C.TEN) continue;
 
                 const savedT = grid[t][prev];
                 const savedSPrev = grid[s][prev];
@@ -1203,22 +1257,30 @@
         //  ・絶対制約が残っていなければ即終了（ふつうの月は1回で終わる）
         //  ・残っていても、やり直して良くならないなら打ち切る
         //    （指定だけで詰んでいる月を延々と回さないため）
-        const HARD_FLOOR = 10000;
-        let best = null;
+        // やり直すかどうかは「絶対に破らないルールが残っているか」で決める。
+        //   以前は合計点を見ていたが、合計点には公平さの減点も混ざっているため、
+        //   ルールは全部守れているのに点が高い月で無駄にやり直し、
+        //   逆にルールが1つ残っていても点が下がらなければ打ち切っていた。
+        //   仕上げ(polish)もやり直しの中に入れて、仕上げ後の状態どうしで比べる。
+        const hardWeightOf = grid => ev.evaluate(grid, true).issues
+            .filter(i => i.level === 'hard' && !i.fromRequest)
+            .reduce((sum, i) => sum + i.weight, 0);
+
+        let best = null, bestHard = Infinity;
         const restarts = Math.max(1, ctx.rules.restarts);
         for (let r = 0; r < restarts; r++) {
             const rand = E.makeRandom(ctx.rules.seed + r * 7919);
             const initial = buildInitial(ctx, fixed, rand);
-            const out = refine(ctx, fixed, initial, ev.evaluate, rand, ctx.rules.iterations);
-            const improved = !best || out.score < best.score;
-            if (improved) best = out;
-            if (best.score < HARD_FLOOR) break;
-            if (r > 0 && !improved) break;
+            const refined = refine(ctx, fixed, initial, ev.evaluate, rand, ctx.rules.iterations);
+            // 焼きなましの終盤で1つだけ残った違反を、実際に出ている違反そのものを
+            // 見ながら潰す（悪化は一切受け入れない）
+            const out = polish(ctx, fixed, refined.grid, ev.evaluate, 60);
+            const hard = hardWeightOf(out.grid);
+            if (!best || hard < bestHard || (hard === bestHard && out.score < best.score)) {
+                best = out; bestHard = hard;
+            }
+            if (bestHard === 0) break;   // 守れているならこれ以上やり直さない
         }
-
-        // 最後の仕上げ。焼きなましの終盤で1つだけ残った違反を、
-        // 実際に出ている違反そのものを見ながら潰す（悪化は一切受け入れない）。
-        best = polish(ctx, fixed, best.grid, ev.evaluate, 60);
 
         const final = ev.evaluate(best.grid, true);
 

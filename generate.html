@@ -170,10 +170,12 @@
                             ・公休＋特休の合計を、必ずスタッフ画面の公休数どおりにします（誕生日休も公休に含みます）<br>
                             ・誕生日は「誕」で必ず休みにします（人数が足りなくても休みます）<br>
                             ・①はスタッフ画面で「①に参加」を付けた人だけ。翌日は必ず休みです<br>
+                            ・①の前日に⑩は入れません（⑩は19時まで、①は6時からのため）<br>
                             ・⑩は3人全員がパートにならないようにします<br>
-                            ・⑩は3日続けません。2日続けてよいのは竹田さん・岩田美さんだけです<br>
+                            ・⑩は3日続けません。2日続けてよいのは竹田・岩田美・石川・大野さんだけです<br>
                             ・希望休・有休・特休の前日には⑩を入れません<br>
-                            ・③は月行事ページで人数を入れた行事の日だけ。④は岡崎さんだけが使います<br>
+                            ・③(7:00〜15:30)は自動では入れません。月行事ページで人数を入れた行事の日か、休み希望ページで直接指名した人だけです<br>
+                            ・④(7:30〜16:00)は岡崎さんだけが使います<br>
                             ・太田さんの連勤は3日までにします<br>
                             ・①③⑩の合計回数と土日祝の出勤回数を、できるだけ全員で均等にします<br>
                             ・梶本・田渕・北窪・八田さんのうち、毎日必ず1人は出勤します
@@ -241,15 +243,15 @@
                         </div>
                         <div class="time-setting" data-type="3">
                             <label><input type="checkbox" class="shift-enabled" data-type="3" checked> ③ (3)</label>
-                            <input type="time" class="shift-start" data-type="3">
+                            <input type="time" class="shift-start" data-type="3" value="07:00">
                             <span>〜</span>
-                            <input type="time" class="shift-end" data-type="3">
+                            <input type="time" class="shift-end" data-type="3" value="15:30">
                         </div>
                         <div class="time-setting" data-type="4">
                             <label><input type="checkbox" class="shift-enabled" data-type="4" checked> ④ (4)</label>
-                            <input type="time" class="shift-start" data-type="4">
+                            <input type="time" class="shift-start" data-type="4" value="07:30">
                             <span>〜</span>
-                            <input type="time" class="shift-end" data-type="4">
+                            <input type="time" class="shift-end" data-type="4" value="16:00">
                         </div>
                         <div class="time-setting" data-type="5">
                             <label><input type="checkbox" class="shift-enabled" data-type="5" checked> ⑤ (5)</label>
@@ -323,6 +325,14 @@
                 <div id="conflict-body" style="margin-top:.9rem; font-size:.9rem; line-height:1.75;"></div>
             </div>
 
+            <!-- 別紙: 日ごとの勤務別合計。勤務表を印刷したときの2枚目に出る -->
+            <div id="daily-count-print-area" class="daily-count-print-area print-only">
+                <h2>日ごとの勤務別合計</h2>
+                <div id="daily-count-print-table-container">
+                    <!-- JSで生成 -->
+                </div>
+            </div>
+
             <div id="summary-print-area" class="summary-print-area print-only">
                 <h2>総合数見比べ表</h2>
                 <div id="summary-print-table-container">
@@ -347,8 +357,8 @@
         <span id="toast-message">生成しました</span>
     </div>
 
-    <script src="engine.js?v=20260810"></script>
-    <script src="generate.js?v=20260810"></script>
+    <script src="engine.js?v=20260810b"></script>
+    <script src="generate.js?v=20260810b"></script>
 </body>
 
 </html>

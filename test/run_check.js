@@ -34,7 +34,7 @@ const BIRTHDAYS = {
 const THIRD_STAFF = new Set(["梶本","田渕","田淵","北窪","八田","石川","岸本","中川"]);
 const FOURTH_STAFF = new Set(["岡崎"]);
 const NO_TEN = new Set(["太田"]);
-const CONSECUTIVE_TEN_OK = new Set(["竹田","岩田美"]);
+const CONSECUTIVE_TEN_OK = new Set(["竹田","岩田美","石川","大野"]);
 const CORE = new Set(["梶本","田渕","田淵","北窪","八田"]);
 const MANUAL_ONLY = new Set(["中西"]);
 const MAX_RUN_BY_STAFF = { "太田": 3 };
@@ -168,6 +168,9 @@ function checkMonth(year, month, seed, opts) {
             }
             // ①の翌日
             if (v === '1' && i + 1 < dates.length && isWork(row[dates[i+1]] || '')) err(`①翌日出勤 ${s.name} ${ds}`);
+            // ①の前日が⑩（2026-08-10 お客さん要望で禁止）
+            if (v === '1' && i > 0 && (row[dates[i-1]] || '') === '10'
+                && !isRequested(s.name, ds) && !isRequested(s.name, dates[i-1])) err(`①の前日が⑩ ${s.name} ${ds}`);
             // ③の資格・行事日
             if (v === '3') {
                 if (!s.canWorkThirdShift) err(`③資格なし ${s.name} ${ds}`);

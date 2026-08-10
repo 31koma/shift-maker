@@ -41,6 +41,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (value === '公') return 'active-public';
         if (value === '有' || value === '有休' || value === '特' || value === '特休') return 'active-paid-leave';
         if (value === '1') return 'active-1';
+        if (value === '3') return 'active-3';
         if (value === '6') return 'active-6';
         if (value === '10') return 'active-10';
         if (value === '出') return 'active-work';
@@ -152,6 +153,9 @@ document.addEventListener('DOMContentLoaded', () => {
         else if (currentVal === '特' || currentVal === '特休') currentVal = '10';
         else if (currentVal === '10') currentVal = '1';
         else if (currentVal === '1') currentVal = '6';
+        // ③(7:00-15:30)は最後に置く。行事の日に特定の方を指名するときだけ使うので、
+        // よく使う 公/有/特/⑩/①/⑥ のタップ回数を変えないため（2026-08-10 追加）
+        else if (currentVal === '6') currentVal = '3';
         else currentVal = '';
 
         if (currentVal === '') {

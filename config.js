@@ -15,7 +15,7 @@ window.SHIFT_CONFIG = {
     // 本番へ push するときは、ここの2行を必ず書き換えること。
     // 画面側は各ページのフッターにある <span class="app-version"></span> に
     // 下の applyVersionLabel が流し込む（HTMLを1枚ずつ直さなくてよい）。
-    APP_VERSION: '2.5.3',
+    APP_VERSION: '2.6.0',
     APP_UPDATED: '2026-08-10',
 
     // 1人あたりに設定できる公休の上限（スタッフ画面の入力欄の上限）
@@ -74,7 +74,8 @@ window.SHIFT_CONFIG = {
     // ⑩ 10:30-19:00 に入らない人
     NO_TEN_SHIFT_STAFF: ["太田"],
     // ⑩の2連続が例外的に許される人（3連続は誰でも禁止）
-    CONSECUTIVE_TEN_ALLOWED: ["竹田", "岩田美"],
+    // 2026-08-10 お客さん要望で石川・大野を追加（組みやすくなる方向で副作用なし）
+    CONSECUTIVE_TEN_ALLOWED: ["竹田", "岩田美", "石川", "大野"],
 
     // 1日の最低出勤人数
     WEEKDAY_MINIMUM: 11,
