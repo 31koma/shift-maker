@@ -740,7 +740,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     ...deepCloneJson(staff),
                     fixedPublicDates: Array.from(staff.fixedPublicDates || []),
                     fixedWorkDates: Array.from(staff.fixedWorkDates || []),
-                    fixedPublicHolidayDates: Array.from(staff.fixedPublicHolidayDates || [])
+                    fixedPublicHolidayDates: Array.from(staff.fixedPublicHolidayDates || []),
+                    // 指定ロック（Set は JSON で {} になって消えるため、配列にして保存する。
+                    // これを忘れると、保存結果を開いたあとの印刷で指定の赤が消える）
+                    lockedDates: Array.from(staff.lockedDates || [])
                 })),
                 timeSettings: deepCloneJson(timeSettings),
                 generateRules: deepCloneJson(generateRules)
@@ -794,6 +797,10 @@ document.addEventListener('DOMContentLoaded', () => {
             fixedPublicDates: new Set(Array.isArray(s.fixedPublicDates) ? s.fixedPublicDates : []),
             fixedWorkDates: new Set(Array.isArray(s.fixedWorkDates) ? s.fixedWorkDates : []),
             fixedPublicHolidayDates: new Set(Array.isArray(s.fixedPublicHolidayDates) ? s.fixedPublicHolidayDates : []),
+            // 指定ロックを復元する（古い保存データには入っていないので空でも動くようにする）
+            lockedDates: new Set(Array.isArray(s.lockedDates) ? s.lockedDates : []),
+            lockedValues: (s.lockedValues && typeof s.lockedValues === 'object') ? s.lockedValues : {},
+            lockedSources: (s.lockedSources && typeof s.lockedSources === 'object') ? s.lockedSources : {},
             schedule: { ...(s.schedule || {}) }
         }));
 
